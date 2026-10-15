@@ -1,0 +1,16 @@
+node_modules/
+dist-mobile/
+*.log
+
+# Android / Tauri build output
+mobile/src-tauri/target/
+mobile/src-tauri/gen/schemas/
+mobile/src-tauri/gen/android/.gradle/
+mobile/src-tauri/gen/android/.kotlin/
+mobile/src-tauri/gen/android/build/
+mobile/src-tauri/gen/android/app/build/
+mobile/src-tauri/gen/android/buildSrc/.gradle/
+mobile/src-tauri/gen/android/buildSrc/.kotlin/
+mobile/src-tauri/gen/android/buildSrc/build/
+mobile/src-tauri/gen/android/app/src/main/jniLibs/
+mobile/src-tauri/gen/android/local.properties

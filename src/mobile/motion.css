@@ -1,0 +1,138 @@
+/*
+ * Motion for the phone app only (imported by main.tsx, so the desktop never
+ * sees it). Redefines the shared entrance keyframes with a little
+ * scale, then adds the phone's own: rising lists, glass sheets, a drawn tab
+ * icon, live dots, glowing work. Everything here stops under
+ * prefers-reduced-motion (styles.css already collapses every duration, and
+ * the block at the bottom turns off what that cannot).
+ */
+
+:root {
+  --m-ease: cubic-bezier(0.16, 1, 0.3, 1);
+  --m-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+/* ── The shared entrances, now a little scale and rise ─────────────────── */
+@keyframes kryo-in { from { opacity: 0; transform: translateY(14px) scale(0.985); } to { opacity: 1; transform: none; } }
+@keyframes kryo-pop { from { opacity: 0; transform: scale(0.9); } to { opacity: 1; transform: none; } }
+@keyframes kryo-fade { from { opacity: 0; } to { opacity: 1; } }
+@keyframes kryo-toast { from { opacity: 0; transform: translateY(22px) scale(0.94); } to { opacity: 1; transform: none; } }
+@keyframes kryo-slide {
+  from { opacity: 0; transform: translateX(var(--kryo-slide, 24px)) scale(0.985); }
+  to { opacity: 1; transform: none; }
+}
+.kryo-in { animation-duration: 420ms; }
+.kryo-pop { animation-duration: 380ms; animation-timing-function: var(--m-spring); }
+.kryo-slide { animation-duration: 480ms; }
+.kryo-toast { animation-duration: 380ms; animation-timing-function: var(--m-spring); }
+
+/* ── Lists and grids rise in one after another ────────────────────── */
+@keyframes m-rise {
+  from { opacity: 0; transform: translateY(26px) scale(0.96); }
+  to { opacity: 1; transform: none; }
+}
+main ul > li {
+  animation: m-rise 560ms var(--m-ease) backwards;
+  animation-delay: var(--m-d, 0ms);
+}
+main ul > li:nth-child(1) { --m-d: 0ms; }
+main ul > li:nth-child(2) { --m-d: 45ms; }
+main ul > li:nth-child(3) { --m-d: 90ms; }
+main ul > li:nth-child(4) { --m-d: 135ms; }
+main ul > li:nth-child(5) { --m-d: 180ms; }
+main ul > li:nth-child(6) { --m-d: 225ms; }
+main ul > li:nth-child(7) { --m-d: 270ms; }
+main ul > li:nth-child(8) { --m-d: 315ms; }
+main ul > li:nth-child(9) { --m-d: 360ms; }
+main ul > li:nth-child(10) { --m-d: 400ms; }
+main ul > li:nth-child(n + 11) { --m-d: 440ms; }
+
+/* Covers focus in when they arrive instead of popping on. */
+@keyframes m-img {
+  from { opacity: 0; transform: scale(1.12); }
+  to { opacity: 1; transform: none; }
+}
+main img { animation: m-img 700ms var(--m-ease) backwards; }
+main img.blur-xl { animation: none; }
+
+/* ── Touch feedback ───────────────────────────────────────────────── */
+button, a { -webkit-tap-highlight-color: transparent; }
+button.kryo-pill, main ul > li { transition: transform 160ms var(--m-ease), filter 160ms ease, background-color 200ms ease, border-color 200ms ease; }
+button.kryo-pill:active { transform: scale(0.94); filter: brightness(1.25); }
+main ul > li:has(> button:active), main ul > li:has(> a:active) { transform: scale(0.97); }
+
+/* ── The tab bar and the sheets ────────────────────────────── */
+/* The one place blur stays: the two bars at the bottom are slightly see-through glass. */
+nav[aria-label='Main'] > div {
+  background-color: color-mix(in oklab, var(--card) 68%, transparent);
+  backdrop-filter: blur(14px) saturate(1.4);
+  -webkit-backdrop-filter: blur(14px) saturate(1.4);
+}
+.m-bottom-glass {
+  background-color: color-mix(in oklab, var(--background) 45%, transparent);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  -webkit-mask-image: linear-gradient(to top, #000 55%, transparent);
+  mask-image: linear-gradient(to top, #000 55%, transparent);
+}
+@keyframes m-nav-in { from { opacity: 0; transform: translateY(40px) scale(0.92); } to { opacity: 1; transform: none; } }
+nav[aria-label='Main'] > div { animation: m-nav-in 700ms var(--m-spring) 120ms both; }
+
+@keyframes m-sheet-up { from { transform: translateY(100%); opacity: 0.4; } to { transform: none; opacity: 1; } }
+.m-sheet { animation: m-sheet-up 460ms var(--m-ease) both; border-radius: var(--kryo-radius) var(--kryo-radius) 0 0; }
+.m-backdrop {
+  animation: kryo-fade 300ms ease both;
+}
+.m-sheet > div > button { animation: m-rise 480ms var(--m-ease) both; }
+.m-sheet > div > button:nth-child(1) { animation-delay: 90ms; }
+.m-sheet > div > button:nth-child(2) { animation-delay: 135ms; }
+.m-sheet > div > button:nth-child(3) { animation-delay: 180ms; }
+.m-sheet > div > button:nth-child(n + 4) { animation-delay: 220ms; }
+
+/* ── The tab icons draw themselves when their tab is chosen ───────── */
+@keyframes m-draw { from { stroke-dashoffset: 1; } to { stroke-dashoffset: 0; } }
+@keyframes m-icon-pop { 0% { transform: scale(0.6) rotate(-14deg); } 55% { transform: scale(1.25) rotate(6deg); } 100% { transform: none; } }
+.m-draw [data-draw] { stroke-dasharray: 1; stroke-dashoffset: 0; }
+button[aria-current='page'] svg, button[aria-pressed='true'] svg.m-draw, .m-tab-on svg { animation: m-icon-pop 520ms var(--m-spring) both; }
+button[aria-current='page'] .m-draw [data-draw], .m-tab-on .m-draw [data-draw] { animation: m-draw 700ms var(--m-ease) both; }
+
+/* ── Things that are alive ────────────────────────────────────────── */
+@keyframes m-live { 0% { box-shadow: 0 0 0 0 color-mix(in oklab, var(--success) 70%, transparent); } 100% { box-shadow: 0 0 0 9px transparent; } }
+.m-live { animation: m-live 1.6s ease-out infinite; }
+
+@keyframes m-glow { 0%, 100% { opacity: 0.55; } 50% { opacity: 1; filter: drop-shadow(0 0 6px currentColor); } }
+.m-working { animation: m-glow 1.6s ease-in-out infinite; }
+
+@keyframes m-breathe { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.04); } }
+.m-breathe { animation: m-breathe 4.2s ease-in-out infinite; }
+
+@keyframes m-float { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-7px); } }
+.m-float { animation: m-float 5s ease-in-out infinite; }
+
+/* A glint that crosses a card now and then. */
+@keyframes m-glint { 0%, 70% { transform: translateX(-120%) skewX(-18deg); } 100% { transform: translateX(260%) skewX(-18deg); } }
+.m-glint { position: relative; overflow: hidden; }
+.m-glint::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  width: 40%;
+  background: linear-gradient(90deg, transparent, color-mix(in oklab, var(--foreground) 14%, transparent), transparent);
+  animation: m-glint 3.8s ease-in-out infinite;
+  pointer-events: none;
+}
+
+/* The Downloads and Games sections slide the way the pill moved. */
+@keyframes m-panel { from { opacity: 0; transform: translateY(18px); } to { opacity: 1; transform: none; } }
+.m-panel { animation: m-panel 520ms var(--m-ease) both; }
+
+
+/* ── What the system setting turns off ────────────────────────────── */
+@media (prefers-reduced-motion: reduce) {
+  main ul > li, main img, nav[aria-label='Main'] > div,
+  .m-live, .m-working, .m-breathe, .m-float, .m-glint::after, .m-panel, .m-sheet, .m-sheet > div > button {
+    animation: none !important;
+  }
+  
+}
+html[data-motion='reduced'] main ul > li, html[data-motion='reduced'] main img { animation: none !important; }

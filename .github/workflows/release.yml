@@ -87,10 +87,54 @@ jobs:
           distribution: temurin
           java-version: 17
       - uses: android-actions/setup-android@v3
-      - run: |
-          sdkmanager "platforms;android-35" "platform-tools" "ndk;27.0.12077973" "build-tools;35.0.0"
-          echo "ANDROID_HOME=$ANDROID_HOME" >> "$GITHUB_ENV"
-          echo "NDK_HOME=$ANDROID_HOME/ndk/27.0.12077973" >> "$GITHUB_ENV"
+      # setup-android leaves the SDK root + cmdline-tools layout inconsistent
+      # between runner images, and licenses unaccepted — so a bare `sdkmanager
+      # <pkgs>` dies with exit 1 / "Failed to find package 'tools'". Pin the
+      # root, locate (or install) a working sdkmanager, accept licenses, and
+      # retry the installs.
+      - name: Install Android SDK packages
+        env:
+          ANDROID_SDK_ROOT: /usr/local/lib/android/sdk
+          ANDROID_HOME: /usr/local/lib/android/sdk
+        run: |
+          SDKROOT=$ANDROID_SDK_ROOT
+          SDKMANAGER="$SDKROOT/cmdline-tools/16.0/bin/sdkmanager"
+          if [ ! -x "$SDKMANAGER" ]; then
+            SDKMANAGER=$(find "$SDKROOT/cmdline-tools" -type f -name sdkmanager -print -quit 2>/dev/null || true)
+          fi
+          if [ -z "$SDKMANAGER" ] || [ ! -x "$SDKMANAGER" ]; then
+            echo "sdkmanager not found under $SDKROOT/cmdline-tools; installing cmdline-tools;latest"
+            if command -v sdkmanager >/dev/null 2>&1; then
+              SDKMANAGER=$(command -v sdkmanager)
+            else
+              mkdir -p /tmp/cmdline-tools && cd /tmp/cmdline-tools
+              curl -sSL https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip -o tools.zip
+              unzip -q tools.zip
+              mkdir -p "$SDKROOT/cmdline-tools/latest"
+              mv cmdline-tools/* "$SDKROOT/cmdline-tools/latest/" || true
+              SDKMANAGER="$SDKROOT/cmdline-tools/latest/bin/sdkmanager"
+              cd -
+            fi
+          fi
+          echo "Using sdkmanager: $SDKMANAGER"
+          yes | "$SDKMANAGER" --sdk_root="$SDKROOT" --install "cmdline-tools;latest" || true
+          attempts=0
+          until [ $attempts -ge 3 ]; do
+            attempts=$((attempts + 1))
+            echo "sdkmanager install attempt $attempts"
+            if yes | "$SDKMANAGER" --sdk_root="$SDKROOT" --install "platform-tools" "platforms;android-35" "build-tools;35.0.0" "ndk;27.0.12077973"; then
+              break
+            fi
+            sleep $((attempts * 5))
+          done
+          if [ $attempts -ge 3 ] && ! "$SDKMANAGER" --sdk_root="$SDKROOT" --list_installed 2>/dev/null | grep -q "ndk;27.0.12077973"; then
+            echo "::error::Failed to install Android SDK packages after 3 attempts"
+            exit 1
+          fi
+          echo "ANDROID_HOME=$SDKROOT" >> "$GITHUB_ENV"
+          echo "ANDROID_SDK_ROOT=$SDKROOT" >> "$GITHUB_ENV"
+          echo "NDK_HOME=$SDKROOT/ndk/27.0.12077973" >> "$GITHUB_ENV"
+          "$SDKMANAGER" --sdk_root="$SDKROOT" --list_installed || true
       - run: pnpm install --frozen-lockfile
 
       # Release, not debug: no --debug flag, so the Rust lib builds with

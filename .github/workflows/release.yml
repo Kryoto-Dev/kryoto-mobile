@@ -173,13 +173,22 @@ jobs:
           for apk in mobile/src-tauri/gen/android/app/build/outputs/apk/universal/release/*.apk \
                      mobile/src-tauri/gen/android/app/build/outputs/apk/*/release/*.apk; do
             [ -f "$apk" ] || continue
+            # Gradle names them app-<dir>-release-unsigned.apk where <dir> is
+            # arm64 | arm | x86_64 | x86 — map to Android ABI names.
             base=$(basename "$apk" .apk)
-            abi=$(echo "$base" | grep -o -E 'arm64-v8a|armeabi-v7a|x86_64|x86|universal' || echo "$base")
+            dir=$(echo "$base" | sed -n 's/^app-\(.*\)-release-unsigned$/\1/p')
+            case "$dir" in
+              arm64) abi="arm64-v8a" ;;
+              arm) abi="armeabi-v7a" ;;
+              x86_64|x86) abi="$dir" ;;
+              universal) abi="universal" ;;
+              *) abi=$(echo "$base" | grep -o -E 'arm64-v8a|armeabi-v7a|x86_64|x86|universal' || echo "$base") ;;
+            esac
             out="out/Kryoto-Mobile_${VERSION}_${abi}.apk"
             cp "$apk" unsigned.apk
             "$ANDROID_HOME/build-tools/35.0.0/zipalign" -f 4 unsigned.apk aligned.apk
             "$ANDROID_HOME/build-tools/35.0.0/apksigner" sign --ks /tmp/release.jks \
-              --ks-pass:android --key-pass:android --out "$out" aligned.apk
+              --ks-pass pass:android --key-pass pass:android --out "$out" aligned.apk
             rm unsigned.apk aligned.apk
           done
           ls -la out

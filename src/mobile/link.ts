@@ -54,14 +54,72 @@ export type RemoteDevice = {
   os: string
   online: boolean
   updatedAt: string
+  /** What the PC's kryo.to link can do: 1 and 2 carry downloads only. */
+  protocol?: number
   running?: string[]
   games?: PhoneGame[]
   downloads?: PhoneDownload[]
 }
 
-export async function relayDevices(token: string): Promise<RemoteDevice[]> {
-  const { json } = await request<{ devices?: RemoteDevice[] }>(`${API}/api/desktop/remote`, { token })
-  return json.devices ?? []
+/**
+ * The first kryo.to link a phone can drive (library, Play, Stop). No Kryoto
+ * Desktop sends it yet: today the PC tells kryo.to about its downloads only,
+ * so every PC listed there is reached by pairing on its Wi-Fi instead.
+ */
+export const PHONE_RELAY_PROTOCOL = 3
+
+/** The first Kryoto Desktop with the phone server a phone pairs with on Wi-Fi (Settings > Phone). */
+export const PHONE_SERVER_VERSION = '0.2.21'
+
+/** A machine kryo.to knows for this account: a Kryoto Desktop, or a Kryoto Forge. */
+export type AccountMachine = {
+  kind: 'desktop' | 'forge'
+  id: string
+  name: string
+  version: string
+  os: string
+  online: boolean
+  seenAt: string
+  /** The phone can open its library through kryo.to. */
+  reachable: boolean
+}
+
+type ForgeAgent = { agentId: string; name: string; kind: string; version: string; platform: string; lastSeenAt: string; online: boolean }
+
+export class RelayUnsupported extends Error {
+  constructor(name: string) {
+    super(`${name} can't be reached through kryo.to yet. Pair it on your Wi-Fi instead.`)
+  }
+}
+
+const relayReady = (d: RemoteDevice) => (d.protocol ?? 1) >= PHONE_RELAY_PROTOCOL
+
+/** Is `version` at least `min`? Plain x.y.z; anything unreadable counts as old. */
+export function atLeast(version: string, min: string): boolean {
+  const parse = (v: string) => v.replace(/^v/, '').split(/[.+-]/).slice(0, 3).map((n) => Number.parseInt(n, 10))
+  const a = parse(version)
+  const b = parse(min)
+  if (a.length < 3 || a.some(Number.isNaN)) return false
+  for (let i = 0; i < 3; i++) if (a[i] !== b[i]) return a[i]! > b[i]!
+  return true
+}
+
+/**
+ * Every machine on the account: the Kryoto Desktops that report to kryo.to,
+ * then the Forge machines (staff only; for anybody else the list is empty).
+ * All are listed, reachable or not, so a PC never just seems to be missing.
+ */
+export async function accountMachines(token: string): Promise<AccountMachine[]> {
+  const [desktops, forge] = await Promise.all([
+    request<{ devices?: RemoteDevice[] }>(`${API}/api/desktop/remote`, { token }).then((r) => r.json.devices ?? []),
+    request<{ agents?: ForgeAgent[] }>(`${API}/api/forge/agents`, { token })
+      .then((r) => r.json.agents ?? [])
+      .catch(() => [] as ForgeAgent[]),
+  ])
+  return [
+    ...desktops.map((d): AccountMachine => ({ kind: 'desktop', id: d.installId, name: d.name, version: d.version, os: d.os, online: d.online, seenAt: d.updatedAt, reachable: relayReady(d) })),
+    ...forge.map((a): AccountMachine => ({ kind: 'forge', id: a.agentId, name: a.name, version: a.version, os: a.platform, online: a.online, seenAt: a.lastSeenAt, reachable: false })),
+  ]
 }
 
 export function relayLink(token: string, installId: string): Link {
@@ -73,6 +131,7 @@ export function relayLink(token: string, installId: string): Link {
       const { json } = await request<{ devices?: RemoteDevice[] }>(`${API}/api/desktop/remote?full=${encodeURIComponent(installId)}`, { token })
       const d = json.devices?.find((x) => x.installId === installId)
       if (!d) throw new Error("That PC isn't linked to this account.")
+      if (!relayReady(d)) throw new RelayUnsupported(d.name)
       return {
         snapshot: { protocol: 1, installId, name: d.name, version: d.version, os: d.os, games: d.games ?? [], running: d.running ?? [], downloads: d.downloads ?? [] },
         online: d.online,
@@ -179,7 +238,14 @@ function kept(links: Links): PhoneSnapshot | null {
  * when this network has failed twice in a row (and tries this network again
  * every 30 s). The last good snapshot stays on screen when the PC goes quiet.
  */
-export function useLibraryLink(token: string | null, links: Links, toast: (message: string) => void, onUnauthorized: () => void): LibraryLink {
+export function useLibraryLink(
+  token: string | null,
+  links: Links,
+  toast: (message: string) => void,
+  onUnauthorized: () => void,
+  /** The PC picked through kryo.to turned out not to support it: drop that link. */
+  onRelayUnsupported: () => void,
+): LibraryLink {
   const [snapshot, setSnapshot] = useState<PhoneSnapshot | null>(() => kept(links))
   const [state, setState] = useState<LinkState>(links.lan || (links.relay && token) ? 'offline' : 'unlinked')
   const [lastSeen, setLastSeen] = useState<number | null>(null)
@@ -231,6 +297,11 @@ export function useLibraryLink(token: string | null, links: Links, toast: (messa
         } catch (e) {
           // kryo.to no longer accepts this sign-in.
           if (e instanceof ApiError && e.status === 401) onUnauthorized()
+          // Picked in an older version, which offered every PC on the account.
+          if (e instanceof RelayUnsupported) {
+            toast(e.message)
+            onRelayUnsupported()
+          }
           return null
         }
       }

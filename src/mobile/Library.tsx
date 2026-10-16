@@ -1,12 +1,13 @@
-import { useEffect, useMemo, useState } from 'react'
-import { ArrowDownUp, LayoutGrid, List, Play, ScanLine, Search, Square, Trash2 } from 'lucide-react'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { ArrowDownUp, Hammer, LayoutGrid, List, Monitor, Play, ScanLine, Search, Square, Trash2 } from 'lucide-react'
 import { Button, Caption, inputCls } from '@/ui'
 import { cn } from '@/lib/utils'
 import { isTauri } from '@/lib/bridge'
 import { formatLastPlayed, formatPlaytime } from '@/lib/format'
 import { game as loadGame } from '@/mobile/catalog'
 import { useApp } from '@/mobile/context'
-import { pairFromQr, pairLan, relayDevices, type RemoteDevice } from '@/mobile/link'
+import { openExternal } from '@/mobile/auth'
+import { accountMachines, atLeast, pairFromQr, pairLan, PHONE_SERVER_VERSION, type AccountMachine } from '@/mobile/link'
 import { Busy, Notice, PageHeader, Poster, Sheet, SheetRow, TopInset } from '@/mobile/parts'
 import { Downloads, openCount } from '@/mobile/Downloads'
 import { AchievementsCard } from '@/mobile/Achievements'
@@ -379,6 +380,8 @@ export function Connect({ onDone }: { onDone?: () => void }) {
   const [code, setCode] = useState('')
   const [pairing, setPairing] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [machine, setMachine] = useState<AccountMachine | null>(null)
+  const hostField = useRef<HTMLInputElement | null>(null)
 
   const pair = async () => {
     setPairing(true)
@@ -432,6 +435,7 @@ export function Connect({ onDone }: { onDone?: () => void }) {
         <label className="grid gap-1">
           <Caption>PC address</Caption>
           <input
+            ref={hostField}
             value={host}
             onChange={(e) => setHost(e.target.value.replace(/[^\d.]/g, ''))}
             placeholder="192.168.1.5"
@@ -467,47 +471,124 @@ export function Connect({ onDone }: { onDone?: () => void }) {
         </Button>
       </section>
       <section className="kryo-radius grid gap-3 border border-border bg-card p-4">
-        <Caption className="font-bold text-foreground/80">Through kryo.to</Caption>
+        <Caption className="font-bold text-foreground/80">On your kryo.to account</Caption>
         {signedIn && token ? (
-          <RelayDevices
+          <Machines
             token={token}
-            onPicked={(installId, name) => {
-              setLinks({ ...links, relay: { installId, name } })
+            onPick={(m) => {
+              if (!m.reachable) return setMachine(m)
+              setLinks({ ...links, relay: { installId: m.id, name: m.name } })
               onDone?.()
             }}
             fail={fail}
           />
         ) : (
           <>
-            <p className="text-xs leading-relaxed text-muted-foreground">Works away from home. Sign in with the account your PC shares its games with.</p>
+            <p className="text-xs leading-relaxed text-muted-foreground">Sign in to see the PCs on your account.</p>
             <Button onClick={signIn}>Sign in with kryo.to</Button>
           </>
         )}
       </section>
+      <MachineSheet
+        machine={machine}
+        onClose={() => setMachine(null)}
+        onScan={
+          isTauri()
+            ? () => {
+                setMachine(null)
+                void scanAndPair()
+              }
+            : undefined
+        }
+        onType={() => {
+          setMachine(null)
+          hostField.current?.scrollIntoView({ block: 'center', behavior: 'smooth' })
+          hostField.current?.focus()
+        }}
+      />
     </div>
   )
 }
 
-function RelayDevices({ token, onPicked, fail }: { token: string; onPicked(installId: string, name: string): void; fail(e: unknown): string }) {
-  const [devices, setDevices] = useState<RemoteDevice[] | null>(null)
+const SITE = 'https://kryo.to'
+
+/** What to do about a machine the phone cannot open through kryo.to. */
+function MachineSheet({ machine, onClose, onScan, onType }: { machine: AccountMachine | null; onClose(): void; onScan?: () => void; onType(): void }) {
+  const old = machine?.kind === 'desktop' && !atLeast(machine.version, PHONE_SERVER_VERSION)
+  const visit = (path: string) => {
+    onClose()
+    void openExternal(`${SITE}${path}`)
+  }
+  return (
+    <Sheet open={!!machine} onClose={onClose} title={machine ? `${machine.name} is not compatible` : 'Not compatible'}>
+      {machine?.kind === 'forge' ? (
+        <>
+          <p className="px-1 pb-2 text-xs leading-relaxed text-muted-foreground">
+            This is a Kryoto Forge machine. It builds games for kryo.to and has no library to play from, so the phone cannot connect to it. Watch and control its builds on kryo.to instead.
+          </p>
+          <SheetRow active onClick={() => visit('/remote?mode=forge')}>
+            Open Forge remote
+          </SheetRow>
+          <SheetRow onClick={onClose}>Not now</SheetRow>
+        </>
+      ) : machine ? (
+        <>
+          <p className="px-1 pb-2 text-xs leading-relaxed text-muted-foreground">
+            Kryoto Desktop on this PC tells kryo.to about its downloads, but the phone can't open its library through kryo.to yet. Connect on the PC's Wi-Fi instead.
+            {old
+              ? ` It runs version ${machine.version || 'unknown'}: update Kryoto Desktop to ${PHONE_SERVER_VERSION} or later, then turn on Settings > Phone > On this network.`
+              : ' On the PC, open Settings > Phone and turn on On this network.'}
+          </p>
+          {onScan ? (
+            <SheetRow active onClick={onScan}>
+              Scan its QR code
+            </SheetRow>
+          ) : null}
+          <SheetRow active={!onScan} onClick={onType}>
+            Enter its address
+          </SheetRow>
+          <SheetRow onClick={() => visit('/remote?mode=desktop')}>See its downloads on kryo.to</SheetRow>
+          <SheetRow onClick={onClose}>Not now</SheetRow>
+        </>
+      ) : null}
+    </Sheet>
+  )
+}
+
+/** Every machine on the account, the ones the phone cannot open marked so; tapping one of those says what to do. */
+function Machines({ token, onPick, fail }: { token: string; onPick(m: AccountMachine): void; fail(e: unknown): string }) {
+  const [machines, setMachines] = useState<AccountMachine[] | null>(null)
   const [error, setError] = useState<string | null>(null)
   const load = () => {
     setError(null)
-    relayDevices(token)
-      .then(setDevices)
+    accountMachines(token)
+      .then(setMachines)
       .catch((e: unknown) => setError(fail(e)))
   }
   useEffect(load, [token]) // eslint-disable-line react-hooks/exhaustive-deps
   if (error) return <Notice title="Could not list your PCs" body={error} retry={load} />
-  if (!devices) return <Busy />
-  if (!devices.length) return <p className="text-xs leading-relaxed text-muted-foreground">No PC on this account yet. In Kryoto Desktop, sign in to kryo.to and turn on Settings, Phone, Through kryo.to.</p>
+  if (!machines) return <Busy />
+  if (!machines.length) return <p className="text-xs leading-relaxed text-muted-foreground">No PC on this account yet. Sign in to kryo.to in Kryoto Desktop and it shows up here.</p>
   return (
     <ul className="grid gap-2">
-      {devices.map((d) => (
-        <li key={d.installId}>
-          <button type="button" onClick={() => onPicked(d.installId, d.name)} className="kryo-radius flex w-full items-center justify-between gap-3 border border-border p-3 text-left">
-            <span className="truncate text-xs font-bold text-foreground">{d.name}</span>
-            <span className={cn('kryo-pill border px-2.5 py-1 text-[10px] uppercase tracking-wider', d.online ? 'border-success/50 text-success' : 'border-border text-muted-foreground')}>{d.online ? 'Online' : 'Offline'}</span>
+      {machines.map((m) => (
+        <li key={`${m.kind}:${m.id}`}>
+          <button type="button" onClick={() => onPick(m)} className="kryo-radius flex w-full items-center gap-3 border border-border p-3 text-left">
+            {m.kind === 'forge' ? <Hammer className="size-4 shrink-0 text-muted-foreground" /> : <Monitor className="size-4 shrink-0 text-muted-foreground" />}
+            <span className="grid min-w-0 grow gap-0.5">
+              <span className={cn('truncate text-xs font-bold', m.reachable ? 'text-foreground' : 'text-foreground/70')}>{m.name}</span>
+              <span className="truncate text-[10px] text-muted-foreground">
+                {m.kind === 'forge' ? 'Kryoto Forge' : 'Kryoto Desktop'}
+                {m.version ? ` ${m.version}` : ''} · {m.online ? 'Online' : 'Offline'}
+              </span>
+            </span>
+            {m.reachable ? (
+              <span className={cn('kryo-pill shrink-0 border px-2.5 py-1 text-[10px] uppercase tracking-wider', m.online ? 'border-success/50 text-success' : 'border-border text-muted-foreground')}>
+                {m.online ? 'Online' : 'Offline'}
+              </span>
+            ) : (
+              <span className="kryo-pill shrink-0 border border-destructive/50 px-2.5 py-1 text-[10px] uppercase tracking-wider text-destructive">Incompatible</span>
+            )}
           </button>
         </li>
       ))}

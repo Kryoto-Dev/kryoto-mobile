@@ -1,13 +1,15 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Check, ChevronRight, Copy, Shield, ShieldCheck, Upload } from 'lucide-react'
+import { BadgeCheck, Check, ChevronRight, Code2, Copy, ExternalLink, FlaskConical, MapPin, QrCode, Shield, ShieldCheck, Upload } from 'lucide-react'
 import { Button, Caption } from '@/ui'
 import { cn } from '@/lib/utils'
+import { isTauri } from '@/lib/bridge'
 import { formatPlaytime } from '@/lib/format'
 import { STATUS_LABEL, STATUSES } from '@/hooks/useSaved'
-import { openExternal } from '@/mobile/auth'
+import { openExternal, parseSignInCode, profile as loadProfile, siteUrl, type AccountProfile } from '@/mobile/auth'
 import { savedLibrary, type SavedCounts, type SavedEntry } from '@/mobile/catalog'
 import { useApp } from '@/mobile/context'
 import { Poster, Strip, TopInset } from '@/mobile/parts'
+import { scanQr } from '@/mobile/scan'
 
 const SITE = 'https://kryo.to'
 
@@ -80,6 +82,23 @@ export function Profile() {
   const [counts, setCounts] = useState<Partial<SavedCounts> | null>(null)
   const [entries, setEntries] = useState<SavedEntry[]>([])
   const [copied, setCopied] = useState(false)
+  const [prof, setProf] = useState<AccountProfile | null>(null)
+
+  // The profile as kryo.to's /user page shows it: its default banner, the
+  // looks the account's perks allow, every picture as a full address.
+  useEffect(() => {
+    if (!token) {
+      setProf(null)
+      return
+    }
+    let current = true
+    loadProfile(token)
+      .then((p) => current && setProf(p))
+      .catch(() => {})
+    return () => {
+      current = false
+    }
+  }, [token, me?.bannerUrl, me?.avatarUrl, me?.displayName])
 
   useEffect(() => {
     if (!token) return
@@ -117,9 +136,9 @@ export function Profile() {
   const pc = snapshot?.profile ?? null
   const ident =
     signedIn
-      ? { name: me ? me.displayName || me.username : 'Loading...', username: me?.username, avatar: me?.avatarUrl, supporter: me?.isSupporter, kryos: me?.kryos?.balance ?? null, fromPc: false }
+      ? { name: me ? me.displayName || me.username : 'Loading...', username: me?.username, avatar: siteUrl(me?.avatarUrl), supporter: me?.isSupporter, kryos: me?.kryos?.balance ?? null, fromPc: false }
       : pc
-        ? { name: pc.displayName || pc.username, username: pc.username, avatar: pc.avatarUrl, supporter: pc.supporter, kryos: pc.kryos, fromPc: true }
+        ? { name: pc.displayName || pc.username, username: pc.username, avatar: siteUrl(pc.avatarUrl), supporter: pc.supporter, kryos: pc.kryos, fromPc: true }
         : null
   const listCounts: Partial<Record<string, number>> | null = signedIn ? (counts ?? {}) : (pc?.counts ?? null)
 
@@ -130,6 +149,40 @@ export function Profile() {
   const joined = account?.createdAt ? new Date(account.createdAt) : null
   const joinedText = joined && !Number.isNaN(joined.getTime()) ? joined.toLocaleDateString(undefined, { month: 'long', year: 'numeric' }) : null
   const kryoId = account?.id ? `K// ${account.id.match(/.{1,4}/g)?.join(' ') ?? account.id}` : null
+  // What the page draws: the site's answer once it is in, the account's own fields until then.
+  const view = account
+    ? {
+        name: prof?.displayName || account.displayName || account.username,
+        banner: prof ? prof.bannerUrl : siteUrl(account.bannerUrl),
+        avatar: prof ? prof.avatarUrl : siteUrl(account.avatarUrl),
+        accent: prof ? prof.accentColor : null,
+        status: prof ? prof.customStatus : account.profileCustomStatus,
+        statusIcon: prof?.customStatusIcon ?? null,
+        bio: prof?.bio ?? account.bio,
+        tier: prof?.tier ?? account.staffRole ?? null,
+        supporter: prof?.donationTierLabel ?? (prof?.isSupporter ?? account.isSupporter ? 'Supporter' : null),
+        tester: prof ? !!prof.reputation : !!account.isTester,
+        verified: prof?.reputation?.verified ?? 0,
+        developer: !!prof?.developer,
+        badge: prof?.customBadge ?? null,
+        location: prof?.location ?? null,
+        links: prof?.links ?? [],
+        kryos: prof ? prof.kryos : (account.kryos?.balance ?? null),
+      }
+    : null
+
+  const scanSignIn = async () => {
+    try {
+      const code = parseSignInCode(await scanQr())
+      if (!code) {
+        toast('That is not a kryo.to sign-in code. Scan the QR code under Sign in with your phone on kryo.to.')
+        return
+      }
+      push({ kind: 'approve', code })
+    } catch (e) {
+      toast(e instanceof Error ? e.message : String(e))
+    }
+  }
 
   const copyId = () => {
     if (!account?.id) return
@@ -157,44 +210,65 @@ export function Profile() {
   return (
     <div className="flex min-h-full flex-col">
       <TopInset />
-      {account ? (
+      {account && view ? (
         <div className="relative">
-          <div className="relative aspect-[16/7] w-full overflow-hidden bg-card">
-            {account.bannerUrl ? (
-              <img src={account.bannerUrl} alt="" draggable={false} className="size-full object-cover" />
-            ) : account.profileAccentColor ? (
-              <div className="size-full opacity-60" style={{ backgroundImage: `linear-gradient(135deg, ${account.profileAccentColor}, transparent)` }} />
-            ) : null}
-            <div aria-hidden className="pointer-events-none absolute inset-x-0 bottom-0 h-1/2 bg-linear-to-t from-background to-transparent" />
+          {/* kryo.to's banner shape (3:1, what its crop editor saves), so nothing the editor promised is cut off. */}
+          <div className="relative aspect-[3/1] w-full overflow-hidden border-b border-border bg-card">
+            {view.banner ? (
+              <img key={view.banner} src={view.banner} alt="" draggable={false} decoding="async" className="size-full object-cover object-center" />
+            ) : (
+              <div className="size-full bg-linear-to-br from-secondary via-muted/40 to-background" />
+            )}
+            <div aria-hidden className="pointer-events-none absolute inset-x-0 bottom-0 h-1/3 bg-linear-to-t from-background/90 via-background/30 to-transparent" />
           </div>
-          {account.avatarUrl ? (
-            <img src={account.avatarUrl} alt="" className="absolute -bottom-10 left-4 z-10 size-20 rounded-full border-4 border-background bg-card object-cover" />
-          ) : (
-            <span className="absolute -bottom-10 left-4 z-10 grid size-20 place-items-center rounded-full border-4 border-background bg-card text-2xl font-bold text-foreground">
-              {(account.displayName || account.username).slice(0, 1).toUpperCase()}
-            </span>
-          )}
+          {view.accent ? (
+            <div
+              aria-hidden
+              className="pointer-events-none absolute inset-x-0 -bottom-24 h-40 opacity-25 blur-3xl"
+              style={{ background: `radial-gradient(ellipse at center, ${view.accent} 0%, transparent 70%)` }}
+            />
+          ) : null}
+          <div
+            className="absolute -bottom-10 left-4 z-10 size-20 overflow-hidden rounded-full border-4 border-background bg-card"
+            style={view.accent ? { boxShadow: `0 0 0 2px ${view.accent}, 0 8px 24px -4px ${view.accent}40` } : undefined}
+          >
+            {view.avatar ? (
+              <img src={view.avatar} alt="" className="size-full object-cover" />
+            ) : (
+              <span className="grid size-full place-items-center text-2xl font-bold text-foreground">{view.name.slice(0, 1).toUpperCase()}</span>
+            )}
+          </div>
         </div>
       ) : null}
       <div className={cn('grid gap-6 px-4 pb-8', account ? 'pt-14' : 'pt-5')}>
-        {account ? (
+        {account && view ? (
           <div className="grid gap-2">
             <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
-              <h1 className="min-w-0 break-words text-2xl font-bold leading-tight text-foreground">{account.displayName || account.username}</h1>
+              <h1 className="min-w-0 break-words text-2xl font-bold leading-tight text-foreground">{view.name}</h1>
               <div className="flex flex-wrap items-center gap-1.5">
-                {account.staffRole ? (
-                  <Badge tone="primary" icon={account.staffRole === 'uploader' ? <Upload aria-hidden /> : <ShieldCheck aria-hidden />}>
-                    {account.staffRole}
+                {view.tier ? (
+                  <Badge tone="primary" icon={view.tier === 'uploader' ? <Upload aria-hidden /> : <ShieldCheck aria-hidden />}>
+                    {view.tier}
                   </Badge>
                 ) : null}
-                {account.isSupporter ? (
+                {view.developer ? (
+                  <Badge tone="primary" icon={<Code2 aria-hidden />}>
+                    Developer
+                  </Badge>
+                ) : null}
+                {view.supporter ? (
                   <Badge tone="primary" icon={<ShieldCheck aria-hidden />}>
-                    Supporter
+                    {view.supporter}
                   </Badge>
                 ) : null}
-                {account.isTester ? (
-                  <Badge tone="muted" icon={<Shield aria-hidden />}>
-                    Playtester
+                {view.badge ? (
+                  <Badge tone="muted" icon={<BadgeCheck aria-hidden />}>
+                    {view.badge.text}
+                  </Badge>
+                ) : null}
+                {view.tester ? (
+                  <Badge tone="muted" icon={view.verified ? <FlaskConical aria-hidden /> : <Shield aria-hidden />}>
+                    {view.verified ? `Game tester · ${view.verified} verified` : 'Game tester'}
                   </Badge>
                 ) : null}
               </div>
@@ -203,8 +277,34 @@ export function Profile() {
               @{account.username}
               {joinedText ? ` · Joined ${joinedText}` : ''}
             </Caption>
-            {account.profileCustomStatus ? <p className="text-xs italic text-muted-foreground">{account.profileCustomStatus}</p> : null}
-            {account.bio ? <p className="whitespace-pre-line break-words text-sm leading-relaxed text-foreground/90">{account.bio}</p> : null}
+            {view.status ? (
+              <p className="text-xs italic text-muted-foreground">
+                {view.statusIcon ? <span className="not-italic">{view.statusIcon} </span> : null}
+                {view.status}
+              </p>
+            ) : null}
+            {view.location ? (
+              <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                <MapPin className="size-3.5 shrink-0" aria-hidden />
+                {view.location}
+              </p>
+            ) : null}
+            {view.bio ? <p className="whitespace-pre-line break-words text-sm leading-relaxed text-foreground/90">{view.bio}</p> : null}
+            {view.links.length ? (
+              <div className="flex flex-wrap gap-1.5">
+                {view.links.map((l) => (
+                  <button
+                    key={l.url}
+                    type="button"
+                    onClick={() => open(l.url)}
+                    className="kryo-pill inline-flex items-center gap-1 border border-border px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider text-muted-foreground"
+                  >
+                    {l.label || l.platform}
+                    <ExternalLink className="size-3" aria-hidden />
+                  </button>
+                ))}
+              </div>
+            ) : null}
             <div className="flex flex-wrap items-center gap-2 pt-1">
               {kryoId ? (
                 <span className="kryo-pill inline-flex items-center gap-1.5 border border-border bg-card py-0.5 pl-3 pr-1 text-[11px] font-bold tracking-wider text-foreground">
@@ -214,7 +314,7 @@ export function Profile() {
                   </button>
                 </span>
               ) : null}
-              {account.kryos?.balance != null ? <Caption>{account.kryos.balance.toLocaleString()} Kryos</Caption> : null}
+              {view.kryos != null ? <Caption>{view.kryos.toLocaleString()} Kryos</Caption> : null}
             </div>
           </div>
         ) : ident ? (
@@ -237,7 +337,7 @@ export function Profile() {
         ) : (
           <section className="kryo-radius grid gap-3 border border-border bg-card p-4 text-center">
             <p className="text-sm font-bold text-foreground">Sign in to see your lists</p>
-            <p className="text-xs leading-relaxed text-muted-foreground">Your account keeps your lists and lets your phone reach your PC away from home. Or connect a PC that is signed in to kryo.to.</p>
+            <p className="text-xs leading-relaxed text-muted-foreground">Your account keeps your lists, your profile and your saved games. Or connect a PC that is signed in to kryo.to.</p>
             <Button variant="primary" onClick={signIn}>
               Sign in with kryo.to
             </Button>
@@ -248,7 +348,7 @@ export function Profile() {
           <section className="kryo-radius grid gap-3 border border-border bg-card p-4">
             <p className="text-sm font-bold text-foreground">Sign in on this phone</p>
             <p className="text-xs leading-relaxed text-muted-foreground">
-              You are seeing {pcName || 'your PC'}'s account. Sign in with kryo.to to get your banner, badges, lists and downloads here, and to reach your PC away from home.
+              You are seeing {pcName || 'your PC'}'s account. Sign in with kryo.to to get your banner, badges and lists here.
             </p>
             <Button variant="primary" onClick={signIn}>
               Sign in with kryo.to
@@ -327,6 +427,18 @@ export function Profile() {
             <p className="text-xs leading-relaxed text-muted-foreground">Connect a PC to see how much you have played.</p>
           )}
         </Section>
+
+        {signedIn && isTauri() ? (
+          <Section title="Sign in on another device">
+            <p className="text-xs leading-relaxed text-muted-foreground">
+              On kryo.to's sign-in page, choose Sign in with your phone and scan its QR code here. Works for Kryoto Desktop and Forge too.
+            </p>
+            <Button onClick={() => void scanSignIn()}>
+              <QrCode className="size-4" />
+              Scan a sign-in code
+            </Button>
+          </Section>
+        ) : null}
 
         {account ? (
           <Section title="Community activity">

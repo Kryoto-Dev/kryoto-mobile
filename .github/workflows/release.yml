@@ -1,0 +1,136 @@
+name: Release
+
+# Fires on a VERSION BUMP, not on every push.
+#
+# Push to main that changes mobile/src-tauri/tauri.conf.json: the check job
+# reads `version` out of it and stops unless package.json, Cargo.toml and
+# tauri.conf.json agree AND that version has no tag yet. So the release ritual
+# is: bump the version in all three, push. No tagging by hand, and no
+# accidental release from an unrelated commit.
+#
+# The APKs land on a GitHub release as one file per ABI
+# (Kryoto-Mobile_<version>_arm64.apk and friends). A per-ABI APK only carries
+# its own phone's native lib, instead of all four bundled together.
+#
+# Release APKs, not debug: the build runs `tauri android build --apk
+# --split-per-abi` WITHOUT --debug, so Gradle assembles the `release` build
+# type (minify + stripped .so via the [profile.release] in Cargo.toml) instead
+# of the `debug` one (debug symbols kept per ABI, ~300MB). Release builds must
+# be signed: CI makes a throwaway keystore once per run and signs + zipaligns
+# every APK, so each file installs straight onto a phone.
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'mobile/src-tauri/tauri.conf.json'
+      - '.github/workflows/release.yml'
+  workflow_dispatch:
+
+# One release at a time; a second bump waits rather than racing the first.
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.v.outputs.version }}
+      needed: ${{ steps.v.outputs.needed }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - id: v
+        shell: bash
+        run: |
+          version=$(node -p "require('./mobile/src-tauri/tauri.conf.json').version")
+          pkg=$(node -p "require('./package.json').version")
+          cargo=$(sed -n 's/^version *= *"\(.*\)"/\1/p' mobile/src-tauri/Cargo.toml | head -n 1)
+          if [ "$version" != "$pkg" ] || [ "$version" != "$cargo" ]; then
+            echo "::error::Versions differ: tauri.conf.json $version, package.json $pkg, Cargo.toml $cargo. Bump all three."
+            exit 1
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          if git rev-parse "v$version" >/dev/null 2>&1; then
+            echo "v$version is already tagged; nothing to release."
+            echo "needed=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "needed=true" >> "$GITHUB_OUTPUT"
+          fi
+
+  build:
+    needs: check
+    if: needs.check.outputs.needed == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-linux-android,armv7-linux-androideabi,i686-linux-android,x86_64-linux-android
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: mobile/src-tauri -> target
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+      - uses: android-actions/setup-android@v3
+      - run: |
+          sdkmanager "platforms;android-35" "platform-tools" "ndk;27.0.12077973" "build-tools;35.0.0"
+          echo "ANDROID_HOME=$ANDROID_HOME" >> "$GITHUB_ENV"
+          echo "NDK_HOME=$ANDROID_HOME/ndk/27.0.12077973" >> "$GITHUB_ENV"
+      - run: pnpm install --frozen-lockfile
+
+      # Release, not debug: no --debug flag, so the Rust lib builds with
+      # [profile.release] (opt-level=z, stripped) and Gradle assembles the
+      # `release` build type instead of the symbol-laden `debug` one.
+      - name: Build the release APKs (one per ABI)
+        working-directory: mobile
+        run: pnpm tauri android build --apk --split-per-abi
+
+      # A release APK is unsigned out of Gradle and will not install. Sign
+      # every split APK with a throwaway key and zipalign it, then rename to
+      # Kryoto-Mobile_<version>_<abi>.apk.
+      - name: Sign and name the APKs
+        shell: bash
+        env:
+          VERSION: ${{ needs.check.outputs.version }}
+        run: |
+          keytool -genkeypair -v -keystore /tmp/release.jks -alias kryoto -keyalg RSA -keysize 2048 -validity 9125 \
+            -storepass android -keypass android -dname "CN=Kryoto, OU=Mobile, O=Kryoto, C=BE"
+          mkdir -p out
+          for apk in mobile/src-tauri/gen/android/app/build/outputs/apk/universal/release/*.apk \
+                     mobile/src-tauri/gen/android/app/build/outputs/apk/*/release/*.apk; do
+            [ -f "$apk" ] || continue
+            base=$(basename "$apk" .apk)
+            abi=$(echo "$base" | grep -o -E 'arm64-v8a|armeabi-v7a|x86_64|x86|universal' || echo "$base")
+            out="out/Kryoto-Mobile_${VERSION}_${abi}.apk"
+            cp "$apk" unsigned.apk
+            "$ANDROID_HOME/build-tools/35.0.0/zipalign" -f 4 unsigned.apk aligned.apk
+            "$ANDROID_HOME/build-tools/35.0.0/apksigner" sign --ks /tmp/release.jks \
+              --ks-pass:android --key-pass:android --out "$out" aligned.apk
+            rm unsigned.apk aligned.apk
+          done
+          ls -la out
+          du -h out/*
+
+      - name: Tag and release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VERSION: ${{ needs.check.outputs.version }}
+        run: |
+          gh release create "v$VERSION" out/*.apk --title "Kryoto Mobile v$VERSION" \
+            --notes "Kryoto Mobile v$VERSION for Android. Pick the APK for your phone (arm64-v8a on almost every modern phone); it installs directly, no updater yet."

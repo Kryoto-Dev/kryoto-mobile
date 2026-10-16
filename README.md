@@ -20,8 +20,20 @@ Needs Node 22+, pnpm, Rust, JDK 17+, the Android SDK and NDK (`ANDROID_HOME`, `N
 ```bash
 pnpm install
 pnpm build                 # typecheck + the web bundle (dist-mobile/)
-pnpm android:build         # debug APK: mobile/src-tauri/gen/android/app/build/outputs/apk/
+pnpm android:build         # release APKs, one per ABI: mobile/src-tauri/gen/android/app/build/outputs/apk/
 ```
+
+`pnpm android:dev` runs the debug build on a connected phone. The release
+build (`tauri android build --apk --split-per-abi`, no `--debug`) strips the
+Rust lib and splits one APK per ABI — a debug APK bundles debug symbols and is
+~300MB, a per-ABI release APK is a fraction of that.
+
+## Release
+
+Bump `version` in `package.json`, `mobile/src-tauri/Cargo.toml` and
+`mobile/src-tauri/tauri.conf.json` (all three must agree), push to `main`.
+The release workflow tags `v<version>` and attaches signed per-ABI APKs to the
+GitHub release.
 
 `pnpm android:dev` runs it on a connected phone.
 

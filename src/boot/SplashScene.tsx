@@ -48,7 +48,7 @@ function reducedMotion() {
   return typeof window !== 'undefined' && window.matchMedia?.('(prefers-reduced-motion: reduce)').matches
 }
 
-export function SplashScene({ onRevealed, className }: { onRevealed: () => void; className?: string }) {
+export function SplashScene({ onRevealed, className, settled = false }: { onRevealed: () => void; className?: string; settled?: boolean }) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null)
 
   useLayoutEffect(() => {
@@ -120,7 +120,8 @@ export function SplashScene({ onRevealed, className }: { onRevealed: () => void;
     let lastLanding = -Infinity
     let burst = false
 
-    const still = reducedMotion()
+    // Settled: the mark as the opening leaves it, at once (Welcome after a sign-out).
+    const still = settled || reducedMotion()
     const t0 = performance.now()
     let last = t0
     let raf = 0

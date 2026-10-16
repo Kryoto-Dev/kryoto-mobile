@@ -3,6 +3,7 @@ import { AsciiBar, Button, Caption, Label } from '@/ui'
 import { cn } from '@/lib/utils'
 import { comments as loadComments, postComment, tested as loadTested, type Comment, type GameFull, type Tested } from '@/mobile/catalog'
 import { useApp } from '@/mobile/context'
+import { siteUrl } from '@/mobile/auth'
 import { ago, requirementLines, reviewVerdict } from '@/mobile/format'
 import { Busy } from '@/mobile/parts'
 
@@ -207,8 +208,8 @@ function CommentItem({ comment, depth, onReply }: { comment: Comment; depth: num
   return (
     <li className={cn('grid gap-2', depth > 0 && 'ml-4 border-l border-border pl-3')}>
       <div className="flex gap-2.5">
-        {comment.author.avatarUrl ? (
-          <img src={comment.author.avatarUrl} alt="" className="size-8 shrink-0 rounded-full border border-border object-cover" />
+        {siteUrl(comment.author.avatarUrl) ? (
+          <img src={siteUrl(comment.author.avatarUrl)!} alt="" className="size-8 shrink-0 rounded-full border border-border object-cover" />
         ) : (
           <span className="grid size-8 shrink-0 place-items-center rounded-full border border-border bg-secondary text-[11px] font-bold text-foreground">{name.slice(0, 1).toUpperCase()}</span>
         )}

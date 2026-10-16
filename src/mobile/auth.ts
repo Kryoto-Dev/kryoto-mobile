@@ -7,7 +7,7 @@ import { store } from '@/mobile/storage'
 
 export const API = 'https://kryo.to'
 
-export type DeviceStart = { device_code: string; user_code: string; verification_uri_complete: string; interval: number; expires_in: number }
+export type DeviceStart = { device_code: string; user_code: string; verification_uri: string; verification_uri_complete: string; interval: number; expires_in: number }
 
 export type Me = {
   /** The public K// ID digits. */
@@ -32,7 +32,14 @@ export function startSignIn(): Promise<DeviceStart> {
   return request<DeviceStart>(`${API}/api/auth/device`, { method: 'POST', body: { client: 'desktop', device_name: 'Kryoto Mobile' } }).then((r) => r.json)
 }
 
-/** Poll until approved. Resolves the token, or throws. */
+/** The code ran out before anybody approved it. */
+export class SignInExpired extends Error {
+  constructor() {
+    super('The sign-in expired. Try again.')
+  }
+}
+
+/** Poll until approved. Resolves the token, or throws (`SignInExpired` when the code ran out). */
 export async function waitForToken(s: DeviceStart, cancelled: () => boolean): Promise<string> {
   let interval = Math.min(Math.max(s.interval, 1), 10)
   const deadline = Date.now() + Math.min(s.expires_in, 900) * 1000
@@ -45,15 +52,90 @@ export async function waitForToken(s: DeviceStart, cancelled: () => boolean): Pr
     if (p.status === 'ok' && p.token) return p.token
     if (p.status === 'slow_down') interval = Math.min(interval + 1, 10)
     else if (p.status === 'access_denied') throw new Error('The sign-in was refused.')
-    else if (p.status !== 'authorization_pending') throw new Error('The sign-in expired. Try again.')
+    else if (p.status !== 'authorization_pending') throw new SignInExpired()
   }
-  throw new Error('The sign-in expired. Try again.')
+  throw new SignInExpired()
 }
 
 /** The signed-in account, or null when the token is no longer good. */
 export async function me(token: string): Promise<Me | null> {
   const { json } = await request<{ user: Me | null }>(`${API}/api/auth/me`, { token })
   return json.user
+}
+
+/** `ABCD-EFGH`, the way kryo.to prints a sign-in code. */
+export function groupCode(code: string): string {
+  return code.length === 8 ? `${code.slice(0, 4)}-${code.slice(4)}` : code
+}
+
+/** One of kryo.to's own paths (`/novarys/...`) as a full address; anything else as it is. */
+export function siteUrl(url: string | null | undefined): string | null {
+  if (!url) return null
+  try {
+    return new URL(url, API).toString()
+  } catch {
+    return null
+  }
+}
+
+/** The signed-in account's profile as kryo.to's /user page shows it (`GET /api/account/profile`). */
+export type AccountProfile = {
+  id: string
+  username: string
+  displayName: string | null
+  avatarUrl: string | null
+  bannerUrl: string | null
+  bio: string | null
+  location: string | null
+  accentColor: string | null
+  links: { platform: string; url: string; label?: string }[]
+  customStatus: string | null
+  customStatusIcon: string | null
+  createdAt: string
+  /** Staff tier: 'owner', 'admin', 'uploader', 'moderator'... */
+  tier: string | null
+  developer: boolean
+  isSupporter: boolean
+  donationTierLabel: string | null
+  customBadge: { text: string; icon: string | null } | null
+  reputation: { balance: number; verified: number } | null
+  kryos: number | null
+}
+
+export async function profile(token: string): Promise<AccountProfile> {
+  const { json } = await request<{ profile: AccountProfile }>(`${API}/api/account/profile`, { token })
+  return json.profile
+}
+
+/** A device waiting to be signed in, as kryo.to describes it before it is approved. */
+export type PendingSignIn = { clientLabel: string; deviceName: string | null; requestIp: string | null; createdAt: string; expiresAt: string }
+
+/**
+ * The code in a kryo.to sign-in QR (`https://kryo.to/link?code=ABCD-EFGH`, what
+ * the site's "Sign in with your phone" shows), or a code typed as is. Null for
+ * anything else.
+ */
+export function parseSignInCode(text: string): string | null {
+  const raw = text.trim()
+  let code = raw
+  try {
+    const url = new URL(raw)
+    if (url.protocol !== 'https:' || (url.hostname !== 'kryo.to' && !url.hostname.endsWith('.kryo.to')) || url.pathname !== '/link') return null
+    code = url.searchParams.get('code') ?? ''
+  } catch {
+    // Not an address: maybe the code itself.
+  }
+  const clean = code.toUpperCase().replace(/[^A-Z0-9]/g, '')
+  return /^[A-HJKMNP-TV-Z2-9]{8}$/.test(clean) ? clean : null
+}
+
+export async function lookupSignIn(token: string, code: string): Promise<PendingSignIn> {
+  const { json } = await request<{ request: PendingSignIn }>(`${API}/api/auth/device/approve?code=${encodeURIComponent(code)}`, { token })
+  return json.request
+}
+
+export async function answerSignIn(token: string, code: string, decision: 'approve' | 'deny'): Promise<void> {
+  await request(`${API}/api/auth/device/approve`, { method: 'POST', token, body: { code, decision } })
 }
 
 /** Ends the session on kryo.to (best effort), then forgets everything account-bound here. */

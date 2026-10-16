@@ -86,7 +86,13 @@ jobs:
         with:
           distribution: temurin
           java-version: 17
-      - uses: android-actions/setup-android@v3
+      # android-actions/setup-android@v3 is deliberately NOT used: its internal
+      # `sdkmanager tools` call now fails ("Failed to find package 'tools'",
+      # the package was removed years ago) after it upgrades cmdline-tools, and
+      # the runner already ships a full SDK at /usr/local/lib/android/sdk
+      # (preinstalled cmdline-tools, licenses partial). The next step owns the
+      # SDK completely: locate a working sdkmanager, accept licenses, install
+      # what the build needs.
       - name: Install Android SDK packages
         env:
           ANDROID_SDK_ROOT: /usr/local/lib/android/sdk

@@ -13,7 +13,7 @@ import { Downloads, openCount } from '@/mobile/Downloads'
 import { AchievementsCard } from '@/mobile/Achievements'
 import { DownloadsIcon, GamesIcon } from '@/mobile/icons'
 import { store, type SortMode, type ViewMode } from '@/mobile/storage'
-import { scanQr } from '@/mobile/scan'
+import { ScanCancelled, scanQr } from '@/mobile/scan'
 import type { PhoneGame } from '@/mobile/types'
 
 const SORT_LABEL: Record<SortMode, string> = {
@@ -407,7 +407,7 @@ export function Connect({ onDone }: { onDone?: () => void }) {
       toast(`Paired with ${lan.name}.`)
       onDone?.()
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e))
+      if (!(e instanceof ScanCancelled)) setError(e instanceof Error ? e.message : String(e))
     } finally {
       setPairing(false)
     }

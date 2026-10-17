@@ -14,3 +14,4 @@ mobile/src-tauri/gen/android/buildSrc/.kotlin/
 mobile/src-tauri/gen/android/buildSrc/build/
 mobile/src-tauri/gen/android/app/src/main/jniLibs/
 mobile/src-tauri/gen/android/local.properties
+.tmp/

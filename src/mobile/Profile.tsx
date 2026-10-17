@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { BadgeCheck, Check, ChevronRight, Code2, Copy, ExternalLink, FlaskConical, MapPin, QrCode, Shield, ShieldCheck, Upload } from 'lucide-react'
+import { Check, ChevronRight, Copy, ExternalLink, MapPin, QrCode } from 'lucide-react'
 import { Button, Caption } from '@/ui'
 import { cn } from '@/lib/utils'
 import { isTauri } from '@/lib/bridge'
@@ -9,7 +9,8 @@ import { openExternal, parseSignInCode, profile as loadProfile, siteUrl, type Ac
 import { savedLibrary, type SavedCounts, type SavedEntry } from '@/mobile/catalog'
 import { useApp } from '@/mobile/context'
 import { Poster, Strip, TopInset } from '@/mobile/parts'
-import { scanQr } from '@/mobile/scan'
+import { Badges } from '@/mobile/badges'
+import { ScanCancelled, scanQr } from '@/mobile/scan'
 
 const SITE = 'https://kryo.to'
 
@@ -28,20 +29,6 @@ function Tile({ label, value }: { label: string; value: string | number }) {
       <span className="text-[10px] uppercase tracking-wider text-muted-foreground">{label}</span>
       <span className="truncate text-sm font-bold text-foreground">{value}</span>
     </div>
-  )
-}
-
-function Badge({ icon, children, tone }: { icon: React.ReactNode; children: React.ReactNode; tone: 'primary' | 'muted' }) {
-  return (
-    <span
-      className={cn(
-        'kryo-pill inline-flex items-center gap-1 border px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wider [&>svg]:size-3',
-        tone === 'primary' ? 'border-primary/60 text-primary' : 'border-border text-muted-foreground',
-      )}
-    >
-      {icon}
-      {children}
-    </span>
   )
 }
 
@@ -159,12 +146,8 @@ export function Profile() {
         status: prof ? prof.customStatus : account.profileCustomStatus,
         statusIcon: prof?.customStatusIcon ?? null,
         bio: prof?.bio ?? account.bio,
-        tier: prof?.tier ?? account.staffRole ?? null,
-        supporter: prof?.donationTierLabel ?? (prof?.isSupporter ?? account.isSupporter ? 'Supporter' : null),
-        tester: prof ? !!prof.reputation : !!account.isTester,
-        verified: prof?.reputation?.verified ?? 0,
-        developer: !!prof?.developer,
-        badge: prof?.customBadge ?? null,
+        // Drawn exactly as the site draws them, once the site has answered.
+        badges: prof?.badges ?? [],
         location: prof?.location ?? null,
         links: prof?.links ?? [],
         kryos: prof ? prof.kryos : (account.kryos?.balance ?? null),
@@ -180,7 +163,7 @@ export function Profile() {
       }
       push({ kind: 'approve', code })
     } catch (e) {
-      toast(e instanceof Error ? e.message : String(e))
+      if (!(e instanceof ScanCancelled)) toast(e instanceof Error ? e.message : String(e))
     }
   }
 
@@ -246,31 +229,7 @@ export function Profile() {
             <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
               <h1 className="min-w-0 break-words text-2xl font-bold leading-tight text-foreground">{view.name}</h1>
               <div className="flex flex-wrap items-center gap-1.5">
-                {view.tier ? (
-                  <Badge tone="primary" icon={view.tier === 'uploader' ? <Upload aria-hidden /> : <ShieldCheck aria-hidden />}>
-                    {view.tier}
-                  </Badge>
-                ) : null}
-                {view.developer ? (
-                  <Badge tone="primary" icon={<Code2 aria-hidden />}>
-                    Developer
-                  </Badge>
-                ) : null}
-                {view.supporter ? (
-                  <Badge tone="primary" icon={<ShieldCheck aria-hidden />}>
-                    {view.supporter}
-                  </Badge>
-                ) : null}
-                {view.badge ? (
-                  <Badge tone="muted" icon={<BadgeCheck aria-hidden />}>
-                    {view.badge.text}
-                  </Badge>
-                ) : null}
-                {view.tester ? (
-                  <Badge tone="muted" icon={view.verified ? <FlaskConical aria-hidden /> : <Shield aria-hidden />}>
-                    {view.verified ? `Game tester · ${view.verified} verified` : 'Game tester'}
-                  </Badge>
-                ) : null}
+                <Badges badges={view.badges} onOpen={(href) => open(`${SITE}${href}`)} />
               </div>
             </div>
             <Caption>

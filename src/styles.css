@@ -761,3 +761,19 @@ html.kryo-pad .kryo-bp-tile:focus {
   --ring: #a2d6eb;
   --season-decoration: #a2d6eb;
 }
+
+/* The Sponsor badge and the top tester rank: a second rule outside the first,
+   as kryo.to draws them (its globals.css `.kryo-sponsor-badge`). */
+.kryo-sponsor-badge {
+  position: relative;
+  margin-left: 3.5px;
+  margin-right: 3.5px;
+}
+.kryo-sponsor-badge::before {
+  content: '';
+  position: absolute;
+  inset: -3px;
+  border-radius: inherit;
+  border: 1px solid var(--primary);
+  pointer-events: none;
+}

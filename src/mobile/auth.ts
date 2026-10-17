@@ -1,4 +1,5 @@
 import { openUrl } from '@tauri-apps/plugin-opener'
+import type { BadgeView } from '@/mobile/badges'
 import { isTauri } from '@/lib/bridge'
 import { request } from '@/mobile/net'
 import { store } from '@/mobile/storage'
@@ -92,9 +93,13 @@ export type AccountProfile = {
   customStatus: string | null
   customStatusIcon: string | null
   createdAt: string
-  /** Staff tier: 'owner', 'admin', 'uploader', 'moderator'... */
+  /** Primary staff role: 'owner', 'admin', 'uploader', 'moderator'... */
   tier: string | null
+  /** Every staff role, highest first. */
+  roles?: string[]
   developer: boolean
+  /** Every badge beside the name, ready to draw (kryo.to lib/profile-badges.ts). Missing from an older site. */
+  badges?: BadgeView[]
   isSupporter: boolean
   donationTierLabel: string | null
   customBadge: { text: string; icon: string | null } | null

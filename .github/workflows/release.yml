@@ -16,8 +16,15 @@ name: Release
 # --split-per-abi` WITHOUT --debug, so Gradle assembles the `release` build
 # type (minify + stripped .so via the [profile.release] in Cargo.toml) instead
 # of the `debug` one (debug symbols kept per ABI, ~300MB). Release builds must
-# be signed: CI makes a throwaway keystore once per run and signs + zipaligns
-# every APK, so each file installs straight onto a phone.
+# be signed. With the ANDROID_KEYSTORE_BASE64 / ANDROID_KEYSTORE_PASSWORD
+# (and optional ANDROID_KEY_ALIAS / ANDROID_KEY_PASSWORD) secrets set, every
+# release is signed with that same key, so a new version installs over the
+# last one. Without them CI falls back to a throwaway key per run and warns:
+# each file still installs, but only after the old version is uninstalled.
+#
+# A debug APK (Kryoto-Mobile_<version>_debug.apk, 64-bit phones and
+# emulators) rides along: not minified, WebView debugging on, signed with
+# Gradle's debug key. For testing, and a fallback if a release build misbehaves.
 on:
   push:
     branches: [main]
@@ -66,7 +73,7 @@ jobs:
     needs: check
     if: needs.check.outputs.needed == 'true'
     runs-on: ubuntu-latest
-    timeout-minutes: 60
+    timeout-minutes: 90
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
@@ -159,16 +166,36 @@ jobs:
         working-directory: mobile
         run: pnpm tauri android build --apk --split-per-abi
 
+      # The debug build: not minified, debuggable, Rust symbols stripped so the
+      # file stays a sensible size. Gradle signs it with its debug key.
+      - name: Build the debug APK
+        working-directory: mobile
+        env:
+          CARGO_PROFILE_DEV_DEBUG: '0'
+          CARGO_PROFILE_DEV_STRIP: 'true'
+        run: pnpm tauri android build --debug --apk --target aarch64 --target x86_64
+
       # A release APK is unsigned out of Gradle and will not install. Sign
-      # every split APK with a throwaway key and zipalign it, then rename to
+      # every split APK and zipalign it, then rename to
       # Kryoto-Mobile_<version>_<abi>.apk.
       - name: Sign and name the APKs
         shell: bash
         env:
           VERSION: ${{ needs.check.outputs.version }}
+          KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
         run: |
-          keytool -genkeypair -v -keystore /tmp/release.jks -alias kryoto -keyalg RSA -keysize 2048 -validity 9125 \
-            -storepass android -keypass android -dname "CN=Kryoto, OU=Mobile, O=Kryoto, C=BE"
+          if [ -n "$KEYSTORE_BASE64" ]; then
+            echo "$KEYSTORE_BASE64" | base64 -d > /tmp/release.jks
+            STOREPASS="$KEYSTORE_PASSWORD"; ALIAS="${KEY_ALIAS:-kryoto}"; KEYPASS="${KEY_PASSWORD:-$KEYSTORE_PASSWORD}"
+          else
+            echo "::warning::No ANDROID_KEYSTORE_BASE64 secret, so this release is signed with a throwaway key and will not install over the previous version. Set the keystore secrets to sign every release with one key."
+            keytool -genkeypair -v -keystore /tmp/release.jks -alias kryoto -keyalg RSA -keysize 2048 -validity 9125 \
+              -storepass android -keypass android -dname "CN=Kryoto, OU=Mobile, O=Kryoto, C=BE"
+            STOREPASS=android; ALIAS=kryoto; KEYPASS=android
+          fi
           mkdir -p out
           for apk in mobile/src-tauri/gen/android/app/build/outputs/apk/universal/release/*.apk \
                      mobile/src-tauri/gen/android/app/build/outputs/apk/*/release/*.apk; do
@@ -187,10 +214,13 @@ jobs:
             out="out/Kryoto-Mobile_${VERSION}_${abi}.apk"
             cp "$apk" unsigned.apk
             "$ANDROID_HOME/build-tools/35.0.0/zipalign" -f 4 unsigned.apk aligned.apk
-            "$ANDROID_HOME/build-tools/35.0.0/apksigner" sign --ks /tmp/release.jks \
-              --ks-pass pass:android --key-pass pass:android --out "$out" aligned.apk
+            "$ANDROID_HOME/build-tools/35.0.0/apksigner" sign --ks /tmp/release.jks --ks-key-alias "$ALIAS" \
+              --ks-pass "pass:$STOREPASS" --key-pass "pass:$KEYPASS" --out "$out" aligned.apk
             rm unsigned.apk aligned.apk
           done
+          debug=mobile/src-tauri/gen/android/app/build/outputs/apk/universal/debug/app-universal-debug.apk
+          [ -f "$debug" ] || { echo "::error::No debug APK was built"; exit 1; }
+          cp "$debug" "out/Kryoto-Mobile_${VERSION}_debug.apk"
           ls -la out
           du -h out/*
 
@@ -201,4 +231,4 @@ jobs:
           VERSION: ${{ needs.check.outputs.version }}
         run: |
           gh release create "v$VERSION" out/*.apk --title "Kryoto Mobile v$VERSION" \
-            --notes "Kryoto Mobile v$VERSION for Android. Pick the APK for your phone (arm64-v8a on almost every modern phone); it installs directly, no updater yet."
+            --notes "Kryoto Mobile v$VERSION for Android. Pick the APK for your phone (arm64-v8a on almost every modern phone); it installs directly, no updater yet. The _debug APK is for testing."

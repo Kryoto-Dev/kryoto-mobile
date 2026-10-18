@@ -19,3 +19,15 @@
 # If you keep the line number information, uncomment this to
 # hide the original source file name.
 #-renamesourcefileattribute SourceFile
+# QR scanning (tauri-plugin-barcode-scanner): ML Kit creates its components by
+# reflection, from names in the manifest. R8 removed their constructors in
+# release builds ("NoSuchMethodException: ...BarcodeRegistrar.<init>"), ML Kit
+# never started, and opening the scanner crashed the app. Debug builds are not
+# minified, which is why they scanned fine.
+-keep class com.google.mlkit.** { *; }
+-keep class com.google.android.gms.internal.mlkit_vision_barcode.** { *; }
+-keep class com.google.android.gms.internal.mlkit_vision_common.** { *; }
+-keep class com.google.android.gms.internal.mlkit_common.** { *; }
+-keep class * implements com.google.firebase.components.ComponentRegistrar { <init>(); }
+-keep class androidx.camera.** { *; }
+-keep class app.tauri.barcodescanner.** { *; }

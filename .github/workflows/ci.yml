@@ -1,0 +1,52 @@
+name: CI
+
+# Every push to main and every pull request: the shared files still match what
+# is locked in shared.json, and the web layer typechecks and builds. The
+# Android build itself only runs from release.yml.
+on:
+  push:
+    branches: [main]
+  pull_request:
+  schedule:
+    # Mondays: say if Desktop has moved on from the files copied here.
+    - cron: '17 6 * * 1'
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  ui:
+    name: UI (shared files, typecheck, build)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      # `pnpm build` starts with the same check; this names it in the run.
+      - name: Shared files match shared.json
+        run: pnpm check:shared
+      - run: pnpm build
+
+  behind-desktop:
+    name: Shared files vs Desktop main (warning only)
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: node scripts/shared.mjs check --remote

@@ -44,7 +44,18 @@ The phone talks to Kryoto Desktop's phone server (`src-tauri/src/phone.rs` in th
 | Path | What's there |
 |---|---|
 | `src/mobile/` | the app: screens, link to the PC, kryo.to calls, motion |
-| `src/ui`, `src/lib`, `src/boot`, `src/hooks`, `src/styles.css` | shared pieces copied from Kryoto Desktop |
+| `src/ui`, `src/lib`, `src/boot`, `src/hooks` | pieces shared with Kryoto Desktop, listed in `shared.json` (see below) |
+| `src/lib/preview.ts`, `src/styles.css` | Mobile's own, similar to Desktop's but not shared |
 | `mobile/src-tauri/` | the Tauri Android shell (native requests, QR scanning) |
+
+## Files shared with Kryoto Desktop
+
+The files in `shared.json` are copies of the same paths in `kryoto-desktop/src`; Desktop is where they are edited. They stay committed here so Mobile builds on its own, and `scripts/shared.mjs` stops them drifting:
+
+- `pnpm check:shared` (also the first step of `pnpm build`, so CI and the Android release run it) fails if a copy was edited here. It is offline: it compares against the hashes locked in `shared.json`.
+- `pnpm sync:shared` copies the files from Desktop's committed HEAD (`--ref <rev>` for another commit, `--from <dir>` for another checkout; by default `../kryoto-desktop`, else a clone from GitHub) and re-locks the hashes. Run it after a Desktop change you want in Mobile, then review the diff and commit.
+- `node scripts/shared.mjs check --remote` also reports which copies are behind Desktop's `main` (a warning only; the CI "Shared files" job runs it weekly).
+
+If a file needs to differ on Mobile, don't edit the copy: add the option to the Desktop file (the way `SplashScene` takes both `cell` and `settled`), or move the difference into a Mobile-only file under `src/mobile`.
 
 MIT.

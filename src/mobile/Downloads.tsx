@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react'
-import { Pause, Play, RotateCw, Trash2, X } from 'lucide-react'
+import { Pause, Play, RotateCw, Square, Trash2, X } from 'lucide-react'
 import { AsciiBar, Button, Caption } from '@/ui'
 import { cn } from '@/lib/utils'
 import { formatBytes, formatLeft } from '@/lib/downloads'
@@ -48,7 +48,7 @@ function detail(d: PhoneDownload): string {
   return ''
 }
 
-function Row({ d, offline, pending, canPlay, playing, starting, onPlay, onAct, onCancel }: { d: PhoneDownload; offline: boolean; pending: boolean; canPlay: boolean; playing: boolean; starting: boolean; onPlay(): void; onAct(a: DownloadAction): void; onCancel(): void }) {
+function Row({ d, offline, pending, canPlay, playing, starting, onPlay, onStop, onAct, onCancel }: { d: PhoneDownload; offline: boolean; pending: boolean; canPlay: boolean; playing: boolean; starting: boolean; onPlay(): void; onStop(): void; onAct(a: DownloadAction): void; onCancel(): void }) {
   const fraction = progress(d)
   const line = detail(d)
   const note = d.status === 'failed' ? d.error : d.notice
@@ -90,10 +90,17 @@ function Row({ d, offline, pending, canPlay, playing, starting, onPlay, onAct, o
           </Button>
         )}
         {d.status === 'installed' && canPlay ? (
-          <Button size="sm" variant="primary" disabled={offline || playing || starting} onClick={onPlay}>
-            <Play className="size-3" />
-            {playing ? 'Running' : starting ? 'Starting...' : 'Play'}
-          </Button>
+          playing ? (
+            <Button size="sm" variant="danger" disabled={offline} onClick={onStop}>
+              <Square className="size-3" />
+              Stop
+            </Button>
+          ) : (
+            <Button size="sm" variant="primary" disabled={offline || starting} onClick={onPlay}>
+              <Play className="size-3" />
+              {starting ? 'Starting...' : 'Play'}
+            </Button>
+          )
         ) : null}
       </div>
     </li>
@@ -103,7 +110,7 @@ function Row({ d, offline, pending, canPlay, playing, starting, onPlay, onAct, o
 /** The PC's downloads: what is coming, and what finished, with pause, resume, cancel and clear. */
 export function Downloads() {
   const { link } = useApp()
-  const { snapshot, state, control, play, starting } = link
+  const { snapshot, state, control, play, stop, starting } = link
   const [pending, setPending] = useState<ReadonlySet<string>>(new Set())
   const [clearing, setClearing] = useState(false)
   const games = useMemo(() => new Set((snapshot?.games ?? []).map((g) => g.id)), [snapshot])
@@ -143,6 +150,7 @@ export function Downloads() {
         playing={!!d.gameId && running.has(d.gameId)}
         starting={!!d.gameId && starting.has(d.gameId)}
         onPlay={() => d.gameId && void play(d.gameId)}
+        onStop={() => d.gameId && void stop(d.gameId)}
         onAct={(a) => void act(d, a)}
         onCancel={() => setAsking(d)}
       />

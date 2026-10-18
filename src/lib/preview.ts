@@ -93,7 +93,6 @@ const settings: Record<string, unknown> = {
   defaultCompatTool: null,
   minimizeOnPlay: false,
   phoneLan: false,
-  phoneRelay: false,
   notifyDownloads: true,
   palette: 'monochrome',
   radius: 'pill',

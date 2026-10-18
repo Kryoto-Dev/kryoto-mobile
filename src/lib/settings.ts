@@ -15,7 +15,6 @@ export type Settings = {
   defaultCompatTool: string | null
   minimizeOnPlay: boolean
   phoneLan: boolean
-  phoneRelay: boolean
   notifyDownloads: boolean
   palette: Palette
   theme?: Theme

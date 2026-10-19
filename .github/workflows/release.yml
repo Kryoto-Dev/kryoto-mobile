@@ -136,22 +136,27 @@ jobs:
           "$SDKMANAGER" --sdk_root="$SDKROOT" --update || true
           yes | "$SDKMANAGER" --sdk_root="$SDKROOT" --licenses || true
 
-          packages=( "platform-tools" "platforms;android-37" "build-tools;35.0.0" "ndk;27.0.12077973" )
+          # SDK 37's published package ID includes the minor version, just as
+          # the platform already installed on the runner and used locally does.
+          packages=( "platform-tools" "platforms;android-37.0" "build-tools;35.0.0" "ndk;27.0.12077973" )
           attempts=0
           until [ $attempts -ge 3 ]; do
             attempts=$((attempts + 1))
             echo "sdkmanager install attempt $attempts"
-            if yes | "$SDKMANAGER" --sdk_root="$SDKROOT" --install "${packages[@]}"; then
+            if "$SDKMANAGER" --sdk_root="$SDKROOT" --install "${packages[@]}" </dev/null; then
               break
             fi
             sleep $((attempts * 5))
           done
 
-          if [ $attempts -ge 3 ] && ! "$SDKMANAGER" --sdk_root="$SDKROOT" --list_installed 2>/dev/null | grep -q "ndk;27.0.12077973"; then
-            echo "::error::Failed to install Android SDK packages after 3 attempts"
-            "$SDKMANAGER" --sdk_root="$SDKROOT" --list_installed || true
-            exit 1
-          fi
+          installed=$("$SDKMANAGER" --sdk_root="$SDKROOT" --list_installed)
+          for package in "${packages[@]}"; do
+            if [[ "$installed" != *"$package"* ]]; then
+              echo "::error::Android SDK package is missing after installation: $package"
+              echo "$installed"
+              exit 1
+            fi
+          done
 
           echo "ANDROID_HOME=$SDKROOT" >> "$GITHUB_ENV"
           echo "ANDROID_SDK_ROOT=$SDKROOT" >> "$GITHUB_ENV"

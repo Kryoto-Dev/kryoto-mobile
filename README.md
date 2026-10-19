@@ -1,59 +1,77 @@
+<p align="center"><img src="mobile/src-tauri/icons/128x128.png" width="80" alt="Kryoto Mobile"></p>
+
 # Kryoto Mobile
 
-Android companion for [Kryoto Desktop](https://github.com/Kryoto-Dev/kryoto-desktop). Browse the Kryoto catalog, see your library, achievements, downloads and profile, and start games on your PC from your phone.
+Browse Kryoto games, manage your PC's library and downloads, and start games from your phone.
+Android companion for [Kryoto Desktop](https://github.com/Kryoto-Dev/kryoto-desktop).
 
-**Tauri 2 (Rust) + React** · same design language as Kryoto Desktop.
+**Kryoto** · Tauri 2 (Rust) + React · MIT · [Download](https://github.com/Kryoto-Dev/kryoto-mobile/releases/latest) · [All repos](https://github.com/Kryoto-Dev)
 
-## What it does
+Install the APK for your phone (`arm64-v8a` for most modern phones). On the same Wi-Fi, open
+Settings > Phone in Desktop and scan its QR code, or enter the address and six-digit code.
+Desktop must include the phone server (`src-tauri/src/phone.rs`, `/v1/...` routes).
 
-- **Store:** browse and search kryo.to's catalog, requests, game pages.
-- **Library:** your PC's games in grid or list, Play / Stop on the PC, achievements, downloads (pause, resume, cancel, clear, Clear all).
-- **Profile:** your kryo.to account, banner, badges, lists and play time.
-- **Connect:** pair with Kryoto Desktop over your Wi-Fi (Settings > Phone on the desktop shows the address and a six-digit code, or a QR code).
+The app includes the catalog, requests, achievements and your kryo.to profile. Downloads started
+on the phone complete kryo.to's Cloudflare check there and pass the result to the PC; if that
+fails, Desktop opens the game's page for you to press Download.
 
-Downloads started from the phone solve kryo.to's Cloudflare check on the phone and hand the result to the PC. If the check cannot be solved there, the PC opens the game's page for you to press Download.
+## Quick start
 
-## Build
-
-Needs Node 22+, pnpm, Rust, JDK 17+, the Android SDK and NDK (`ANDROID_HOME`, `NDK_HOME`), and the Android Rust targets (`rustup target add aarch64-linux-android`).
+Install Node 22+, pnpm 10, Rust, JDK 17+, and the Android SDK and NDK.
+Set `ANDROID_HOME` and `NDK_HOME`, then:
 
 ```bash
-pnpm install
-pnpm build                 # typecheck + the web bundle (dist-mobile/)
-pnpm android:build         # release APKs, one per ABI: mobile/src-tauri/gen/android/app/build/outputs/apk/
+rustup target add aarch64-linux-android armv7-linux-androideabi i686-linux-android x86_64-linux-android
+pnpm install --frozen-lockfile
+pnpm dev                                # the UI in a browser (http://localhost:1423/mobile.html)
+pnpm android:dev                        # the app on a connected phone or emulator
+pnpm android:build --split-per-abi       # release APKs, one per ABI
 ```
 
-`pnpm android:dev` runs the debug build on a connected phone. The release
-build (`tauri android build --apk --split-per-abi`, no `--debug`) strips the
-Rust lib and splits one APK per ABI — a debug APK bundles debug symbols and is
-~300MB, a per-ABI release APK is a fraction of that.
-
-## Release
-
-Bump `version` in `package.json`, `mobile/src-tauri/Cargo.toml` and
-`mobile/src-tauri/tauri.conf.json` (all three must agree), push to `main`.
-The release workflow tags `v<version>` and attaches signed per-ABI APKs to the
-GitHub release.
-
-The phone talks to Kryoto Desktop's phone server (`src-tauri/src/phone.rs` in the desktop repo, `/v1/...` routes), so the desktop side must be a build that has it.
+APKs are written to `mobile/src-tauri/gen/android/app/build/outputs/apk/`.
+Release builds strip Rust symbols; use `pnpm android:build --debug` for a debug APK.
 
 ## Layout
 
 | Path | What's there |
 |---|---|
-| `src/mobile/` | the app: screens, link to the PC, kryo.to calls, motion |
-| `src/ui`, `src/lib`, `src/boot`, `src/hooks` | pieces shared with Kryoto Desktop, listed in `shared.json` (see below) |
-| `src/lib/preview.ts`, `src/styles.css` | Mobile's own, similar to Desktop's but not shared |
+| `src/mobile/` | the UI: store, library, downloads, achievements, profile and PC connection |
+| `src/ui/`, `src/lib/`, `src/boot/`, `src/hooks/` | components shared with Desktop, listed in `shared.json` |
+| `src/lib/preview.ts`, `src/styles.css` | Mobile's own preview data and styles |
 | `mobile/src-tauri/` | the Tauri Android shell (native requests, QR scanning) |
+| `scripts/shared.mjs` | check and sync the files shared with Desktop |
 
-## Files shared with Kryoto Desktop
+## Checks
 
-The files in `shared.json` are copies of the same paths in `kryoto-desktop/src`; Desktop is where they are edited. They stay committed here so Mobile builds on its own, and `scripts/shared.mjs` stops them drifting:
+```bash
+pnpm build                              # shared-file check, typecheck and UI build (dist-mobile/)
+```
 
-- `pnpm check:shared` (also the first step of `pnpm build`, so CI and the Android release run it) fails if a copy was edited here. It is offline: it compares against the hashes locked in `shared.json`.
-- `pnpm sync:shared` copies the files from Desktop's committed HEAD (`--ref <rev>` for another commit, `--from <dir>` for another checkout; by default `../kryoto-desktop`, else a clone from GitHub) and re-locks the hashes. Run it after a Desktop change you want in Mobile, then review the diff and commit.
-- `node scripts/shared.mjs check --remote` also reports which copies are behind Desktop's `main` (a warning only; the CI "Shared files" job runs it weekly).
+CI runs this on Ubuntu for every push to `main` and every pull request.
 
-If a file needs to differ on Mobile, don't edit the copy: add the option to the Desktop file (the way `SplashScene` takes both `cell` and `settled`), or move the difference into a Mobile-only file under `src/mobile`.
+## Shared files
 
-MIT.
+Files listed in `shared.json` are committed copies from `kryoto-desktop/src`, so Mobile builds
+on its own. Edit them in Desktop, then run `pnpm sync:shared` here and review the diff.
+It reads Desktop's committed HEAD from `../kryoto-desktop`, or clones it if that checkout is
+missing. Use `--ref <rev>` or `--from <dir>` to choose another revision or checkout.
+
+`pnpm check:shared` checks the locked hashes offline. `node scripts/shared.mjs check --remote`
+also reports copies behind Desktop's `main`; CI runs that check weekly as a warning.
+Keep Mobile-specific changes under `src/mobile/`, or add an option to the original Desktop
+component before syncing it.
+
+## Release
+
+Bump the version in `package.json`, `mobile/src-tauri/Cargo.toml` and
+`mobile/src-tauri/tauri.conf.json` together, then push to `main`. The release workflow tags
+`v<version>` and publishes signed APKs for each ABI, plus a debug APK for testing.
+
+Set `ANDROID_KEYSTORE_BASE64` and `ANDROID_KEYSTORE_PASSWORD` in the repository's Actions
+secrets to keep the signing key between releases; `ANDROID_KEY_ALIAS` and `ANDROID_KEY_PASSWORD`
+are optional. Without a saved key, CI uses a temporary one and the previous app must be
+uninstalled before installing the new release. Updates are installed manually from Releases.
+
+## License
+
+[MIT](LICENSE). Bundled dependencies: [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).

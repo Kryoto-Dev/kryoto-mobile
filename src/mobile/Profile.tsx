@@ -5,14 +5,12 @@ import { cn } from '@/lib/utils'
 import { isTauri } from '@/lib/bridge'
 import { formatPlaytime } from '@/lib/format'
 import { STATUS_LABEL, STATUSES } from '@/hooks/useSaved'
-import { openExternal, parseSignInCode, profile as loadProfile, siteUrl, type AccountProfile } from '@/mobile/auth'
+import { API, openExternal, parseSignInCode, profile as loadProfile, siteUrl, type AccountProfile } from '@/mobile/auth'
 import { savedLibrary, type SavedCounts, type SavedEntry } from '@/mobile/catalog'
 import { useApp } from '@/mobile/context'
 import { Poster, Strip, TopInset } from '@/mobile/parts'
 import { Badges } from '@/mobile/badges'
 import { ScanCancelled, scanQr } from '@/mobile/scan'
-
-const SITE = 'https://kryo.to'
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
@@ -229,7 +227,7 @@ export function Profile() {
             <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
               <h1 className="min-w-0 break-words text-2xl font-bold leading-tight text-foreground">{view.name}</h1>
               <div className="flex flex-wrap items-center gap-1.5">
-                <Badges badges={view.badges} onOpen={(href) => open(`${SITE}${href}`)} />
+                <Badges badges={view.badges} onOpen={(href) => open(`${API}${href}`)} />
               </div>
             </div>
             <Caption>
@@ -317,16 +315,16 @@ export function Profile() {
 
         {signedIn ? (
           <div className="flex flex-wrap gap-2">
-            <Button size="sm" onClick={() => open(`${SITE}/collections`)}>
+            <Button size="sm" onClick={() => open(`${API}/collections`)}>
               Collections
             </Button>
-            <Button size="sm" onClick={() => open(`${SITE}/settings/profile`)}>
+            <Button size="sm" onClick={() => open(`${API}/settings/profile`)}>
               Edit profile
             </Button>
-            <Button size="sm" onClick={() => open(`${SITE}/perks`)}>
+            <Button size="sm" onClick={() => open(`${API}/perks`)}>
               Perks
             </Button>
-            <Button size="sm" variant="primary" onClick={() => open(`${SITE}/settings`)}>
+            <Button size="sm" variant="primary" onClick={() => open(`${API}/settings`)}>
               Settings
             </Button>
             <Button size="sm" variant="danger" onClick={signOut}>
@@ -355,7 +353,7 @@ export function Profile() {
         {recent.length ? (
           <Section title="Recently updated">
             <Covers entries={recent} chips onOpen={(slug) => push({ kind: 'game', slug })} />
-            <LinkRow label="Manage my library" onClick={() => open(`${SITE}/library`)} />
+            <LinkRow label="Manage my library" onClick={() => open(`${API}/library`)} />
           </Section>
         ) : null}
 
@@ -401,7 +399,7 @@ export function Profile() {
 
         {account ? (
           <Section title="Community activity">
-            <LinkRow label="Reputation, verified games and reports" onClick={() => open(`${SITE}/user/${encodeURIComponent(account.username)}`)} />
+            <LinkRow label="Reputation, verified games and reports" onClick={() => open(`${API}/user/${encodeURIComponent(account.username)}`)} />
           </Section>
         ) : null}
 
@@ -409,7 +407,7 @@ export function Profile() {
           <Section title="Collections">
             <p className="text-xs leading-relaxed text-muted-foreground">
               Make a collection public at{' '}
-              <button type="button" onClick={() => open(`${SITE}/collections`)} className="font-bold text-foreground underline underline-offset-2">
+              <button type="button" onClick={() => open(`${API}/collections`)} className="font-bold text-foreground underline underline-offset-2">
                 my collections
               </button>{' '}
               and it shows here.

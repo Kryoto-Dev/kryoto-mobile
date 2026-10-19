@@ -25,9 +25,20 @@ pub struct NetResponse {
     body: String,
 }
 
+/// A debug build's stand-in for kryo.to (a local site, for testing the app end
+/// to end), from `KRYO_DEV_API` at build time. Never in a release build.
+#[cfg(debug_assertions)]
+const DEV_API: Option<&str> = option_env!("KRYO_DEV_API");
+
 /// kryo.to over https, or a PC's Kryoto server on a private IPv4 address.
 fn allowed(url: &Url) -> bool {
     let plain = url.username().is_empty() && url.password().is_none();
+    #[cfg(debug_assertions)]
+    if let Some(dev) = DEV_API.and_then(|d| Url::parse(d).ok()) {
+        if plain && url.origin() == dev.origin() {
+            return true;
+        }
+    }
     match url.scheme() {
         "https" => plain && url.host_str() == Some("kryo.to") && url.port().is_none(),
         "http" => plain && matches!(url.host(), Some(Host::Ipv4(ip)) if ip.is_private()) && url.path().starts_with("/v1/"),
@@ -58,10 +69,35 @@ async fn net_request(req: NetRequest) -> Result<NetResponse, String> {
     if let Some(body) = req.body {
         request = request.body(body);
     }
-    let response = request.send().await.map_err(|e| format!("Could not reach {host}: {e}"))?;
+    let response = request.send().await.map_err(|e| unreachable(&host, &e))?;
     let status = response.status().as_u16();
     let body = response.text().await.map_err(|e| e.to_string())?;
     Ok(NetResponse { status, body })
+}
+
+/// A failed request in words a player can act on, not the HTTP library's.
+fn unreachable(host: &str, e: &reqwest::Error) -> String {
+    let pc = is_pc(host);
+    if e.is_timeout() {
+        if pc {
+            format!("{host} did not answer in time. Check Kryoto Desktop is open and this phone is on the same Wi-Fi.")
+        } else {
+            format!("{host} did not answer in time. Check your connection.")
+        }
+    } else if e.is_connect() {
+        if pc {
+            format!("Could not reach {host}. Check Kryoto Desktop is open, Phone is on in its Settings, and this phone is on the same Wi-Fi.")
+        } else {
+            format!("Could not reach {host}. Check your connection.")
+        }
+    } else {
+        format!("Could not reach {host}.")
+    }
+}
+
+/// A PC on this network (an IPv4 address) rather than kryo.to.
+fn is_pc(host: &str) -> bool {
+    host.parse::<std::net::Ipv4Addr>().is_ok()
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]

@@ -35,8 +35,6 @@ Bump `version` in `package.json`, `mobile/src-tauri/Cargo.toml` and
 The release workflow tags `v<version>` and attaches signed per-ABI APKs to the
 GitHub release.
 
-`pnpm android:dev` runs it on a connected phone.
-
 The phone talks to Kryoto Desktop's phone server (`src-tauri/src/phone.rs` in the desktop repo, `/v1/...` routes), so the desktop side must be a build that has it.
 
 ## Layout

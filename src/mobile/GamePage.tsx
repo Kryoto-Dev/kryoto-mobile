@@ -3,7 +3,7 @@ import { Bookmark, Download, FileText } from 'lucide-react'
 import { Button, Caption, Label } from '@/ui'
 import { cn } from '@/lib/utils'
 import { STATUS_LABEL, STATUSES, type SavedStatus } from '@/hooks/useSaved'
-import { openExternal } from '@/mobile/auth'
+import { API, openExternal } from '@/mobile/auth'
 import { CatalogGameCard } from '@/mobile/cards'
 import { game as loadGame, releases as loadReleases, savedLibrary, setSaved, type GameDetail, type GameFull, type Release } from '@/mobile/catalog'
 import type { CatalogCard } from '@/mobile/catalog-store'
@@ -190,10 +190,10 @@ export function GamePage({ slug }: { slug: string }) {
                 {g.download_count != null ? <Fact label="Downloads">{g.download_count.toLocaleString()}</Fact> : null}
               </div>
               <div className="flex flex-wrap gap-2">
-                <Button size="sm" onClick={() => void openExternal(`https://kryo.to/game/${g.slug}?help=1`)}>
+                <Button size="sm" onClick={() => void openExternal(`${API}/game/${g.slug}?help=1`)}>
                   Game not working? Get help
                 </Button>
-                <Button size="sm" onClick={() => void openExternal(`https://kryo.to/requests/new?update=${encodeURIComponent(g.slug)}`)}>
+                <Button size="sm" onClick={() => void openExternal(`${API}/requests/new?update=${encodeURIComponent(g.slug)}`)}>
                   Build out of date? Ask for an update
                 </Button>
               </div>

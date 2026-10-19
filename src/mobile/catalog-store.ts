@@ -1,4 +1,5 @@
 import { useSyncExternalStore } from 'react'
+import { API } from '@/mobile/auth'
 
 /**
  * kryo.to's whole catalog as cards (`/api/games/cards`, newest first), paged
@@ -45,7 +46,6 @@ export type CatalogState = {
   error: string | null
 }
 
-const API = 'https://kryo.to'
 const PAGE = 500
 /** A loaded catalog is reused this long before Browse asks again. */
 const FRESH_MS = 10 * 60 * 1000

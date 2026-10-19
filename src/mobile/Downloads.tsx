@@ -7,6 +7,7 @@ import { useApp } from '@/mobile/context'
 import type { DownloadAction } from '@/mobile/link'
 import { Notice, Poster, Sheet, SheetRow } from '@/mobile/parts'
 import type { DownloadStatus, PhoneDownload } from '@/mobile/types'
+import { useLiveReceived } from '@/mobile/live-progress'
 
 const LABEL: Record<DownloadStatus, string> = {
   queued: 'Waiting in line',
@@ -30,27 +31,30 @@ export function openCount(list: readonly PhoneDownload[]): number {
   return list.filter((d) => OPEN.has(d.status)).length
 }
 
-function progress(d: PhoneDownload): number | null {
+/** `received`: the bytes as they are now (useLiveReceived), not as last reported. */
+function progress(d: PhoneDownload, received: number): number | null {
   if (d.status === 'installed') return 1
   if (d.status === 'extracting') return d.extractTotal ? Math.min(1, d.extracted / d.extractTotal) : null
-  return d.total ? Math.min(1, d.received / d.total) : null
+  return d.total ? Math.min(1, received / d.total) : null
 }
 
-function detail(d: PhoneDownload): string {
+function detail(d: PhoneDownload, received: number): string {
   if (d.status === 'downloading') {
-    const parts = [d.total ? `${formatBytes(d.received)} of ${formatBytes(d.total)}` : formatBytes(d.received)]
+    const parts = [d.total ? `${formatBytes(received)} of ${formatBytes(d.total)}` : formatBytes(received)]
     if (d.speed) parts.push(`${formatBytes(d.speed)}/s`)
-    if (d.speed && d.total) parts.push(formatLeft((d.total - d.received) / d.speed))
+    if (d.speed && d.total) parts.push(formatLeft((d.total - received) / d.speed))
     return parts.join(' - ')
   }
-  if (d.status === 'paused' && d.total) return `${formatBytes(d.received)} of ${formatBytes(d.total)}`
+  if (d.status === 'paused' && d.total) return `${formatBytes(received)} of ${formatBytes(d.total)}`
   if (d.status === 'installed' && d.total) return formatBytes(d.total)
   return ''
 }
 
 function Row({ d, offline, pending, canPlay, playing, starting, onPlay, onStop, onAct, onCancel }: { d: PhoneDownload; offline: boolean; pending: boolean; canPlay: boolean; playing: boolean; starting: boolean; onPlay(): void; onStop(): void; onAct(a: DownloadAction): void; onCancel(): void }) {
-  const fraction = progress(d)
-  const line = detail(d)
+  // A closed PC moves nothing, whatever it last said.
+  const live = useLiveReceived(offline ? { ...d, speed: 0 } : d)
+  const fraction = progress(d, live)
+  const line = detail(d, live)
   const note = d.status === 'failed' ? d.error : d.notice
   const off = offline || pending
   return (

@@ -62,9 +62,9 @@ export type RemoteDevice = {
 }
 
 /**
- * The first kryo.to link a phone can drive (library, Play, Stop). No Kryoto
- * Desktop sends it yet: today the PC tells kryo.to about its downloads only,
- * so every PC listed there is reached by pairing on its Wi-Fi instead.
+ * The first kryo.to link a phone can drive (library, Play, Stop). Kryoto
+ * Desktop reports it from 0.2.23 on (remote.rs); an older one tells kryo.to
+ * about its downloads only, and is reached by pairing on its Wi-Fi instead.
  */
 export const PHONE_RELAY_PROTOCOL = 3
 
@@ -186,16 +186,15 @@ export function parsePairingUri(text: string): { code: string; hosts: string[] }
 export async function pairFromQr(text: string): Promise<LanLink> {
   const parsed = parsePairingUri(text)
   if (!parsed) throw new Error("That is not a Kryoto pairing code. Scan the QR code in the PC's Settings > Phone.")
-  const failures: string[] = []
   for (const host of parsed.hosts) {
     try {
       return await pairLan(host, parsed.code)
     } catch (e) {
       if (!(e instanceof ApiError) || e.status !== 0) throw e
-      failures.push(e.message)
     }
   }
-  throw new Error(`Could not reach the PC. Is this phone on the same Wi-Fi? ${failures.join(' ')}`)
+  // Each failure says the same thing; the addresses tried are what helps.
+  throw new Error(`Could not reach the PC at ${parsed.hosts.join(', ')}. Check Kryoto Desktop is open and this phone is on the same Wi-Fi.`)
 }
 
 export type LinkState = 'live' | 'offline' | 'unlinked'
@@ -221,6 +220,11 @@ export interface LibraryLink {
 
 const LAN_POLL_MS = 3_000
 const RELAY_POLL_MS = 10_000
+/** Through kryo.to while the PC is downloading: the bars move about as often as the PC reports. */
+const RELAY_BUSY_POLL_MS = 4_000
+/** Through kryo.to just after Play, Stop or a download command: the PC takes it within ~3 s, so look again soon. */
+const RELAY_FOLLOW_POLL_MS = 1_500
+const RELAY_FOLLOW_MS = 20_000
 const LAN_PROBE_MS = 30_000
 const PERSIST_EVERY_MS = 30_000
 const START_TIMEOUT = { lan: 30_000, relay: 90_000 }
@@ -274,6 +278,8 @@ export function useLibraryLink(
     let lastProbe = 0
     let sig = ''
     let persisted = 0
+    let moving = false
+    let followUntil = 0
 
     const fetchOnce = async (): Promise<{ got: Fetched; by: 'lan' | 'relay' } | null> => {
       const now = Date.now()
@@ -317,6 +323,7 @@ export function useLibraryLink(
         return
       }
       const { got } = found
+      moving = got.snapshot.downloads.some((d) => d.status !== 'paused' && d.status !== 'installed' && d.status !== 'failed' && d.status !== 'canceled')
       const next = JSON.stringify(got.snapshot)
       if (next !== sig) {
         sig = next
@@ -338,8 +345,9 @@ export function useLibraryLink(
       } finally {
         busy = false
       }
-      if (!stopped) timer = window.setTimeout(() => void tick(), relayMode ? RELAY_POLL_MS : LAN_POLL_MS)
+      if (!stopped) timer = window.setTimeout(() => void tick(), relayMode ? relayDelay() : LAN_POLL_MS)
     }
+    const relayDelay = () => (Date.now() < followUntil ? RELAY_FOLLOW_POLL_MS : moving ? RELAY_BUSY_POLL_MS : RELAY_POLL_MS)
     const kick = () => {
       window.clearTimeout(timer)
       void tick()
@@ -347,7 +355,11 @@ export function useLibraryLink(
     const onVisible = () => {
       if (document.visibilityState === 'visible') kick()
     }
-    refresh.current = kick
+    // Called after every command: the answer shows on the next few polls.
+    refresh.current = () => {
+      followUntil = Date.now() + RELAY_FOLLOW_MS
+      kick()
+    }
     document.addEventListener('visibilitychange', onVisible)
     void tick()
     return () => {

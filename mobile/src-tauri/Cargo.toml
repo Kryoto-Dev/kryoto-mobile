@@ -1,6 +1,6 @@
 [package]
 name = "kryoto-mobile"
-version = "0.2.24"
+version = "0.2.25"
 description = "Kryoto Mobile: the Android companion to Kryoto Desktop."
 authors = ["Kryoto"]
 license = "MIT"

@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { request } from '@/mobile/net'
+import { API } from '@/mobile/auth'
 
 /**
  * The games still arriving on kryo.to (`/api/games/uploading`), and how far
@@ -92,7 +93,7 @@ export function useUploadSlots(): UploadSlot[] {
       if (!alive) return
       if (document.visibilityState === 'visible') {
         try {
-          const { json } = await request<{ slots?: UploadSlot[] }>('https://kryo.to/api/games/uploading')
+          const { json } = await request<{ slots?: UploadSlot[] }>(`${API}/api/games/uploading`)
           const next = json.slots ?? []
           count.current = next.length
           // Only a change repaints: the same JSON parses to new objects every time.
@@ -136,7 +137,7 @@ const FALLBACK: Record<string, string[]> = {
 /** kryo.to's list of progress words, fetched once and shared. */
 let words: Promise<WordFile> | null = null
 function loadWords(): Promise<WordFile> {
-  return (words ??= request<WordFile>('https://kryo.to/loading-words.json')
+  return (words ??= request<WordFile>(`${API}/loading-words.json`)
     .then((r) => r.json)
     .catch(() => ({})))
 }

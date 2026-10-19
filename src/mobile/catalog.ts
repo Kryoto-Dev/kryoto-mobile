@@ -1,4 +1,5 @@
 import { request } from '@/mobile/net'
+import { API } from '@/mobile/auth'
 import { rankSearch, type Crowd } from '@/mobile/search'
 import type { SavedStatus } from '@/hooks/useSaved'
 
@@ -9,7 +10,6 @@ import type { SavedStatus } from '@/hooks/useSaved'
  * `links` `/api/games` also returns are never touched.
  */
 
-const API = 'https://kryo.to'
 
 /** A game as `/api/games/<slug>` sends it: only the fields the page reads. */
 export type GameFull = {

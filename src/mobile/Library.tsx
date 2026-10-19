@@ -6,7 +6,7 @@ import { isTauri } from '@/lib/bridge'
 import { formatLastPlayed, formatPlaytime } from '@/lib/format'
 import { game as loadGame } from '@/mobile/catalog'
 import { useApp } from '@/mobile/context'
-import { openExternal } from '@/mobile/auth'
+import { API, openExternal } from '@/mobile/auth'
 import { accountMachines, atLeast, pairFromQr, pairLan, PHONE_SERVER_VERSION, type AccountMachine } from '@/mobile/link'
 import { Busy, Notice, PageHeader, Poster, Sheet, SheetRow, TopInset } from '@/mobile/parts'
 import { Downloads, openCount } from '@/mobile/Downloads'
@@ -295,6 +295,26 @@ function PlayButton({
   )
 }
 
+/** Seconds since a running game started (the PC stamps lastPlayed at launch), ticking each second. */
+function useSessionSeconds(running: boolean, startedUnix: number | null): number {
+  const [now, setNow] = useState(() => Date.now())
+  useEffect(() => {
+    if (!running) return
+    setNow(Date.now())
+    const t = window.setInterval(() => setNow(Date.now()), 1000)
+    return () => window.clearInterval(t)
+  }, [running])
+  // A phone clock a little behind the PC's would give a negative time.
+  return running && startedUnix ? Math.max(0, Math.floor(now / 1000 - startedUnix)) : 0
+}
+
+function formatClock(seconds: number): string {
+  const h = Math.floor(seconds / 3600)
+  const m = Math.floor((seconds % 3600) / 60)
+  const s = String(seconds % 60).padStart(2, '0')
+  return h ? `${h}:${String(m).padStart(2, '0')}:${s}` : `${m}:${s}`
+}
+
 /** A game on the PC: art, stats, and Play or Stop. */
 export function LibraryGamePage({ id }: { id: string }) {
   const { link, back } = useApp()
@@ -302,6 +322,8 @@ export function LibraryGamePage({ id }: { id: string }) {
   const game = snapshot?.games.find((g) => g.id === id)
   const [hero, setHero] = useState<string | null>(null)
   const [removing, setRemoving] = useState(false)
+  const running = (game && snapshot?.running.includes(game.id)) ?? false
+  const session = useSessionSeconds(running, game?.lastPlayed ?? null)
 
   const slug = game?.slug
   useEffect(() => {
@@ -323,7 +345,6 @@ export function LibraryGamePage({ id }: { id: string }) {
       </div>
     )
   }
-  const running = snapshot?.running.includes(id) ?? false
   const offline = state === 'offline'
   return (
     <div className="flex min-h-full flex-col">
@@ -333,10 +354,10 @@ export function LibraryGamePage({ id }: { id: string }) {
         <div className="grid gap-4 px-4">
           <div className="flex items-center gap-2">
             <h2 className="min-w-0 grow text-lg font-bold leading-tight text-foreground">{game.title}</h2>
-            {running ? <span className="kryo-pill shrink-0 border border-success/50 px-2.5 py-1 text-[10px] uppercase tracking-wider text-success">Running</span> : null}
+            {running ? <span className="kryo-pill shrink-0 border border-success/50 px-2.5 py-1 text-[10px] uppercase tracking-wider text-success tabular-nums">Running{session ? ` · ${formatClock(session)}` : ''}</span> : null}
           </div>
           <dl className="grid grid-cols-3 gap-2">
-            <Stat label="Played" value={formatPlaytime(game.playtimeSeconds)} />
+            <Stat label="Played" value={formatPlaytime(game.playtimeSeconds + session)} />
             <Stat label="Last played" value={formatLastPlayed(game.lastPlayed)} />
             <Stat label="Added" value={game.addedAt ? new Date(game.addedAt * 1000).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' }) : 'Unknown'} />
           </dl>
@@ -510,14 +531,12 @@ export function Connect({ onDone }: { onDone?: () => void }) {
   )
 }
 
-const SITE = 'https://kryo.to'
-
 /** What to do about a machine the phone cannot open through kryo.to. */
 function MachineSheet({ machine, onClose, onScan, onType }: { machine: AccountMachine | null; onClose(): void; onScan?: () => void; onType(): void }) {
   const old = machine?.kind === 'desktop' && !atLeast(machine.version, PHONE_SERVER_VERSION)
   const visit = (path: string) => {
     onClose()
-    void openExternal(`${SITE}${path}`)
+    void openExternal(`${API}${path}`)
   }
   return (
     <Sheet open={!!machine} onClose={onClose} title={machine ? `${machine.name} is not compatible` : 'Not compatible'}>

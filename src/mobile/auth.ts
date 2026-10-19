@@ -1,12 +1,13 @@
 import { openUrl } from '@tauri-apps/plugin-opener'
 import type { BadgeView } from '@/mobile/badges'
 import { isTauri } from '@/lib/bridge'
-import { request } from '@/mobile/net'
+import { ApiError, request } from '@/mobile/net'
 import { store } from '@/mobile/storage'
 
-/** kryo.to's device sign-in (RFC 8628) as the client "desktop" (kryo.to only accepts its known clients; the approval screen also shows the device name "Kryoto Mobile"). */
+/** kryo.to's device sign-in (RFC 8628), as the client "mobile" (see startSignIn). */
 
-export const API = 'https://kryo.to'
+/** kryo.to. A test build may name a local site instead (`VITE_KRYO_API`, with the native `KRYO_DEV_API` in a debug build); releases never set it. */
+export const API: string = import.meta.env.VITE_KRYO_API || 'https://kryo.to'
 
 export type DeviceStart = { device_code: string; user_code: string; verification_uri: string; verification_uri_complete: string; interval: number; expires_in: number }
 
@@ -29,8 +30,19 @@ export type Me = {
   kryos?: { balance?: number } | null
 }
 
-export function startSignIn(): Promise<DeviceStart> {
-  return request<DeviceStart>(`${API}/api/auth/device`, { method: 'POST', body: { client: 'desktop', device_name: 'Kryoto Mobile' } }).then((r) => r.json)
+/**
+ * As "mobile", so the approval screen says Kryoto Mobile; as "desktop" when the
+ * site does not know that client yet (it answers 400), which it accepted first.
+ */
+export async function startSignIn(): Promise<DeviceStart> {
+  const ask = (client: string) =>
+    request<DeviceStart>(`${API}/api/auth/device`, { method: 'POST', body: { client, device_name: 'Kryoto Mobile' } }).then((r) => r.json)
+  try {
+    return await ask('mobile')
+  } catch (e) {
+    if (e instanceof ApiError && e.status === 400) return ask('desktop')
+    throw e
+  }
 }
 
 /** The code ran out before anybody approved it. */

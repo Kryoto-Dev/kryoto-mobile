@@ -58,6 +58,7 @@ async fn net_request(req: NetRequest) -> Result<NetResponse, String> {
         "POST" => reqwest::Method::POST,
         "PUT" => reqwest::Method::PUT,
         "DELETE" => reqwest::Method::DELETE,
+        "PATCH" => reqwest::Method::PATCH,
         _ => return Err("Blocked address.".into()),
     };
     let client = reqwest::Client::builder()
@@ -76,6 +77,52 @@ async fn net_request(req: NetRequest) -> Result<NetResponse, String> {
     let status = response.status().as_u16();
     let body = response.text().await.map_err(|e| e.to_string())?;
     Ok(NetResponse { status, body })
+}
+
+#[derive(Deserialize)]
+pub struct UploadRequest {
+    url: String,
+    #[serde(rename = "contentType")]
+    content_type: String,
+    #[serde(rename = "dataBase64")]
+    data_base64: String,
+}
+
+const UPLOAD_MAX: usize = 12 * 1024 * 1024;
+
+/// The presigned Backblaze B2 address kryo.to hands out for a profile image: https, no credentials or port, under backblazeb2.com.
+fn upload_allowed(url: &Url) -> bool {
+    url.scheme() == "https"
+        && url.username().is_empty()
+        && url.password().is_none()
+        && url.port().is_none()
+        && url.host_str().is_some_and(|h| h.ends_with(".backblazeb2.com"))
+        && url.path().len() > 1
+}
+
+/// PUTs one picked image to the presigned storage address; resolves the HTTP status.
+#[tauri::command]
+async fn net_upload(req: UploadRequest) -> Result<u16, String> {
+    use base64::Engine;
+    let url = Url::parse(&req.url).ok().filter(upload_allowed).ok_or("Blocked address.")?;
+    let host = url.host_str().unwrap_or_default().to_string();
+    let data = base64::engine::general_purpose::STANDARD.decode(req.data_base64.as_bytes()).map_err(|_| "The file could not be read.".to_string())?;
+    if data.len() > UPLOAD_MAX {
+        return Err("File is too large.".into());
+    }
+    let client = reqwest::Client::builder()
+        .timeout(Duration::from_secs(60))
+        .redirect(reqwest::redirect::Policy::none())
+        .build()
+        .map_err(|e| e.to_string())?;
+    let response = client
+        .put(url)
+        .header("content-type", req.content_type.as_str())
+        .body(data)
+        .send()
+        .await
+        .map_err(|e| unreachable(&host, &e))?;
+    Ok(response.status().as_u16())
 }
 
 /// A failed request in words a player can act on, not the HTTP library's.
@@ -111,7 +158,7 @@ pub fn run() {
     #[cfg(any(target_os = "android", target_os = "ios"))]
     let builder = builder.plugin(tauri_plugin_barcode_scanner::init());
     builder
-        .invoke_handler(tauri::generate_handler![net_request, platform::mobile_action])
+        .invoke_handler(tauri::generate_handler![net_request, net_upload, platform::mobile_action])
         .run(tauri::generate_context!())
         .expect("error while running Kryoto Mobile");
 }
@@ -145,5 +192,17 @@ mod tests {
         assert!(!ok("http://192.168.1.5/v1/../other"));
         assert!(!ok("https://192.168.1.5/v1/snapshot"));
         assert!(!ok("http://localhost/v1/x"));
+    }
+
+    #[test]
+    fn uploads_only_to_backblaze_over_https() {
+        let up = |u: &str| Url::parse(u).is_ok_and(|u| upload_allowed(&u));
+        assert!(up("https://s3.us-west-004.backblazeb2.com/bucket/key?X-Amz-Signature=x"));
+        assert!(!up("http://s3.us-west-004.backblazeb2.com/bucket/key"));
+        assert!(!up("https://backblazeb2.com.evil.com/x"));
+        assert!(!up("https://evil.com@s3.us-west-004.backblazeb2.com/x"));
+        assert!(!up("https://s3.us-west-004.backblazeb2.com:8443/x"));
+        assert!(!up("https://kryo.to/x"));
+        assert!(!up("https://s3.us-west-004.backblazeb2.com/"));
     }
 }

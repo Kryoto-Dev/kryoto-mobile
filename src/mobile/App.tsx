@@ -4,6 +4,11 @@ import { SplashScene } from '@/boot/SplashScene'
 import { AsciiBar, Button, Caption, IconButton } from '@/ui'
 import { cn } from '@/lib/utils'
 import { ApprovePage } from '@/mobile/Approve'
+import { CollectionPage } from '@/mobile/account/CollectionPage'
+import { Collections } from '@/mobile/account/Collections'
+import { EditProfile } from '@/mobile/account/EditProfile'
+import { Perks } from '@/mobile/account/Perks'
+import { Settings } from '@/mobile/account/Settings'
 import {
   groupCode,
   me as loadMe,
@@ -117,6 +122,14 @@ export function App() {
     }
   }, [token, signedOut, fail])
 
+  const reloadMe = useCallback(async () => {
+    const t = tokenRef.current
+    if (!t) return
+    const user = await loadMe(t)
+    if (user) setMe(user)
+    else signedOut()
+  }, [signedOut])
+
   // Android's back button is `history.back()`: one pushed page per history
   // entry, and one for the sign-in screen, so Back closes it rather than the app.
   const signingRef = useRef(false)
@@ -178,6 +191,7 @@ export function App() {
     () => ({
       token,
       me,
+      reloadMe,
       signedIn: !!token,
       links,
       setLinks,
@@ -195,7 +209,7 @@ export function App() {
       },
       fail,
     }),
-    [token, me, links, setLinks, link, push, back, toast, fail, openSignIn],
+    [token, me, reloadMe, links, setLinks, link, push, back, toast, fail, openSignIn],
   )
 
   const page = stack[stack.length - 1]
@@ -240,6 +254,16 @@ export function App() {
                   <ApprovePage code={page.code} />
                 ) : page.kind === 'notifications' ? (
                   <NotificationsPage />
+                ) : page.kind === 'editProfile' ? (
+                  <EditProfile />
+                ) : page.kind === 'settings' ? (
+                  <Settings tab={page.tab} />
+                ) : page.kind === 'perks' ? (
+                  <Perks />
+                ) : page.kind === 'collections' ? (
+                  <Collections />
+                ) : page.kind === 'collection' ? (
+                  <CollectionPage id={page.id} />
                 ) : (
                   <ConnectPage />
                 )}

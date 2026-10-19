@@ -18,7 +18,7 @@ export function Poster({ src, title, nsfw, ratio = 'aspect-[2/3]', className }: 
 }
 
 /** A filter or choice pill: the white one is selected. */
-export function Chip({ active, onClick, children }: { active?: boolean; onClick: () => void; children: ReactNode }) {
+export function Chip({ active, onClick, icon, children }: { active?: boolean; onClick: () => void; icon?: ReactNode; children: ReactNode }) {
   return (
     <button
       type="button"
@@ -26,9 +26,11 @@ export function Chip({ active, onClick, children }: { active?: boolean; onClick:
       aria-pressed={active}
       className={cn(
         'kryo-pill h-8 shrink-0 whitespace-nowrap border px-3.5 text-[11px] font-bold uppercase tracking-wider transition-colors',
+        icon && 'inline-flex items-center gap-1.5',
         active ? 'border-primary bg-primary text-primary-foreground' : 'border-border text-muted-foreground',
       )}
     >
+      {icon}
       {children}
     </button>
   )

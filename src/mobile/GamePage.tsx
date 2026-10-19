@@ -8,6 +8,7 @@ import { CatalogGameCard } from '@/mobile/cards'
 import { game as loadGame, releases as loadReleases, savedLibrary, setSaved, type GameDetail, type GameFull, type Release } from '@/mobile/catalog'
 import type { CatalogCard } from '@/mobile/catalog-store'
 import { useApp } from '@/mobile/context'
+import { GenreIcon } from '@/mobile/genre-icons'
 import { ago } from '@/mobile/format'
 import { Comments, Description, Information, LaunchOptions, Requirements, Reviews, TestedBlock } from '@/mobile/game-sections'
 import { Busy, Notice, PageHeader, Poster, Sheet, SheetRow, Strip } from '@/mobile/parts'
@@ -127,7 +128,8 @@ export function GamePage({ slug }: { slug: string }) {
               {g.genres.length ? (
                 <div className="flex flex-wrap gap-1.5">
                   {g.genres.slice(0, 5).map((x) => (
-                    <span key={x} className="kryo-pill border border-border bg-card px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
+                    <span key={x} className="kryo-pill inline-flex items-center gap-1 border border-border bg-card px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
+                      <GenreIcon genre={x} />
                       {x}
                     </span>
                   ))}

@@ -1956,6 +1956,7 @@ dependencies = [
 name = "kryoto-mobile"
 version = "0.2.26"
 dependencies = [
+ "base64 0.22.1",
  "reqwest 0.12.28",
  "serde",
  "serde_json",

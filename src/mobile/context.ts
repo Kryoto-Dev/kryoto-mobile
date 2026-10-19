@@ -3,13 +3,27 @@ import type { Me } from '@/mobile/auth'
 import type { LibraryLink } from '@/mobile/link'
 import type { Links } from '@/mobile/storage'
 
-/** Where a push goes: a catalog game, a game on the PC, the pairing screen, or approving another device's sign-in. */
-export type Page = { kind: 'game'; slug: string } | { kind: 'lib'; id: string } | { kind: 'connect' } | { kind: 'notifications' } | { kind: 'approve'; code: string }
+export type SettingsTab = 'account' | 'appearance' | 'notifications' | 'security' | 'support'
+
+/** Where a push goes: a catalog game, a game on the PC, the pairing screen, approving another device's sign-in, or an account screen. */
+export type Page =
+  | { kind: 'game'; slug: string }
+  | { kind: 'lib'; id: string }
+  | { kind: 'connect' }
+  | { kind: 'notifications' }
+  | { kind: 'approve'; code: string }
+  | { kind: 'editProfile' }
+  | { kind: 'settings'; tab?: SettingsTab }
+  | { kind: 'perks' }
+  | { kind: 'collections' }
+  | { kind: 'collection'; id: string }
 
 export interface AppContext {
   token: string | null
   /** The signed-in account, once loaded. */
   me: Me | null
+  /** Fetch the signed-in account again (after a save changed it). */
+  reloadMe(): Promise<void>
   /** Signed in or not, loaded or not. */
   signedIn: boolean
   links: Links

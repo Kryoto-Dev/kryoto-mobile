@@ -28,6 +28,35 @@ export type Me = {
   isSupporter: boolean
   isTester?: boolean
   kryos?: { balance?: number } | null
+  email?: string | null
+  emailVerifiedAt?: string | null
+  hasPassword?: boolean
+  signupMethod?: string
+  isProfilePublic?: boolean
+  isLibraryPublic?: boolean
+  isAnonymous?: boolean
+  profileLocation?: { country?: string | null; state?: string | null; city?: string | null } | null
+  profileLinks?: { platform: string; url: string; label?: string }[]
+  profileAvatarFrame?: string | null
+  profileCustomStatusIcon?: string | null
+  recentAvatars?: string[]
+  recentBanners?: string[]
+  /** Every perk the account holds, from its rank or bought. */
+  perks?: string[]
+  donationTier?: string | null
+  diePersonalised?: boolean | null
+  uiPreferences?: { seasonalMode?: string; disabledSeasons?: string[] } | null
+  appearanceTheme?: string | null
+  appearancePalette?: string | null
+  appearanceTypeface?: string | null
+  appearanceRadius?: string | null
+  appearanceHaptics?: boolean | null
+  appearanceAura?: boolean | null
+  appearanceShowPill?: boolean | null
+  appearanceNsfwBlur?: boolean | null
+  appearanceGreetingPersonal?: boolean | null
+  appearanceNsfwHide?: boolean | null
+  appearanceMotion?: 'full' | 'reduced' | null
 }
 
 /**
@@ -117,6 +146,10 @@ export type AccountProfile = {
   customBadge: { text: string; icon: string | null } | null
   reputation: { balance: number; verified: number } | null
   kryos: number | null
+  avatarFrame?: string | null
+  isProfilePublic?: boolean
+  isLibraryPublic?: boolean
+  donationTier?: string | null
 }
 
 export async function profile(token: string): Promise<AccountProfile> {

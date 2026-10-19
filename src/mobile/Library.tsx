@@ -429,7 +429,14 @@ export function Connect({ onDone }: { onDone?: () => void }) {
     setPairing(true)
     setError(null)
     try {
-      const next = await pairFromQr(await scanQr(), token)
+      const next = await pairFromQr(
+        await scanQr({
+          title: 'Connect your PC',
+          hint: 'Hold the phone steady over the QR code Kryoto Desktop shows.',
+          steps: ['Open Kryoto Desktop on your PC.', 'Go to Settings, then Phone, and turn Phone on.', 'Keep both on the same Wi-Fi and scan the code.'],
+        }),
+        token,
+      )
       setLinks(next)
       toast(`Connected to ${next.lan?.name ?? next.relay?.name}.`)
       onDone?.()

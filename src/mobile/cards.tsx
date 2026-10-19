@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { cn } from '@/lib/utils'
 import type { CatalogCard } from '@/mobile/catalog-store'
+import { GenreIcon } from '@/mobile/genre-icons'
 import { Poster } from '@/mobile/parts'
 import { hasProgress, nameRevealOf, PHASE_LABEL, revealOf, useLoadingWord, type UploadSlot } from '@/mobile/upload'
 
@@ -40,7 +41,8 @@ export function CatalogGameCard({ game, onOpen }: { game: CatalogCard; onOpen: (
         {game.genres.length ? (
           <div className="mt-auto flex flex-wrap gap-1">
             {game.genres.slice(0, 3).map((g) => (
-              <span key={g} className="border border-border px-1.5 py-0.5 text-[9px] uppercase tracking-wider text-muted-foreground">
+              <span key={g} className="inline-flex items-center gap-1 border border-border px-1.5 py-0.5 text-[9px] uppercase tracking-wider text-muted-foreground">
+                <GenreIcon genre={g} />
                 {g}
               </span>
             ))}

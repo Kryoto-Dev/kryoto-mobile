@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Check, ChevronRight, Copy, ExternalLink, MapPin, QrCode } from 'lucide-react'
+import { Check, ChevronRight, Copy, ExternalLink, Gem, LibraryBig, LogOut, MapPin, QrCode, Settings as SettingsIcon, UserPen } from 'lucide-react'
 import { Button, Caption } from '@/ui'
 import { cn } from '@/lib/utils'
 import { isTauri } from '@/lib/bridge'
@@ -83,7 +83,7 @@ export function Profile() {
     return () => {
       current = false
     }
-  }, [token, me?.bannerUrl, me?.avatarUrl, me?.displayName])
+  }, [token, me])
 
   useEffect(() => {
     if (!token) return
@@ -154,7 +154,13 @@ export function Profile() {
 
   const scanSignIn = async () => {
     try {
-      const code = parseSignInCode(await scanQr())
+      const code = parseSignInCode(
+        await scanQr({
+          title: 'Sign in another device',
+          hint: 'Hold the phone steady over the QR code on the sign-in page.',
+          steps: ['On the other device, open kryo.to and choose Sign in.', 'Pick Sign in with your phone.', 'Scan the QR code it shows.'],
+        }),
+      )
       if (!code) {
         toast('That is not a kryo.to sign-in code. Scan the QR code under Sign in with your phone on kryo.to.')
         return
@@ -316,19 +322,24 @@ export function Profile() {
 
         {signedIn ? (
           <div className="flex flex-wrap gap-2">
-            <Button size="sm" onClick={() => open(`${API}/collections`)}>
+            <Button size="sm" onClick={() => push({ kind: 'collections' })}>
+              <LibraryBig className="size-3.5" aria-hidden />
               Collections
             </Button>
-            <Button size="sm" onClick={() => open(`${API}/settings/profile`)}>
+            <Button size="sm" onClick={() => push({ kind: 'editProfile' })}>
+              <UserPen className="size-3.5" aria-hidden />
               Edit profile
             </Button>
-            <Button size="sm" onClick={() => open(`${API}/perks`)}>
+            <Button size="sm" onClick={() => push({ kind: 'perks' })}>
+              <Gem className="size-3.5" aria-hidden />
               Perks
             </Button>
-            <Button size="sm" variant="primary" onClick={() => open(`${API}/settings`)}>
+            <Button size="sm" variant="primary" onClick={() => push({ kind: 'settings' })}>
+              <SettingsIcon className="size-3.5" aria-hidden />
               Settings
             </Button>
             <Button size="sm" variant="danger" onClick={signOut}>
+              <LogOut className="size-3.5" aria-hidden />
               Sign out
             </Button>
           </div>
@@ -407,8 +418,8 @@ export function Profile() {
         {signedIn ? (
           <Section title="Collections">
             <p className="text-xs leading-relaxed text-muted-foreground">
-              Make a collection public at{' '}
-              <button type="button" onClick={() => open(`${API}/collections`)} className="font-bold text-foreground underline underline-offset-2">
+              Make a collection public in{' '}
+              <button type="button" onClick={() => push({ kind: 'collections' })} className="font-bold text-foreground underline underline-offset-2">
                 my collections
               </button>{' '}
               and it shows here.

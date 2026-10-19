@@ -126,6 +126,36 @@ button[aria-current='page'] .m-draw [data-draw], .m-tab-on .m-draw [data-draw] {
 @keyframes m-panel { from { opacity: 0; transform: translateY(18px); } to { opacity: 1; transform: none; } }
 .m-panel { animation: m-panel 520ms var(--m-ease) both; }
 
+/* ── The QR scan screen: the web view turns see-through so the native camera shows in its window ── */
+html[data-scanning], html[data-scanning] body { background: transparent !important; }
+html[data-scanning] #root { visibility: hidden; }
+@keyframes m-scan { 0%, 100% { top: 0; opacity: 0; } 12%, 88% { opacity: 1; } 50% { top: 100%; } }
+.m-scan-line { animation: m-scan 2.4s ease-in-out infinite; }
+html[data-motion='reduced'] .m-scan-line { animation: none; top: 50%; }
+@media (prefers-reduced-motion: reduce) { .m-scan-line { animation: none; top: 50%; } }
+
+/* The window opens from a point, scans, and closes back to one; the text around it rises in and out. */
+:root { --scan-size: min(68vw, 18rem); }
+@keyframes m-frame-in { from { width: 2.5rem; height: 2.5rem; opacity: 0; } 30% { opacity: 1; } to { width: var(--scan-size); height: var(--scan-size); opacity: 1; } }
+@keyframes m-frame-out { from { width: var(--scan-size); height: var(--scan-size); } to { width: 0; height: 0; } }
+.m-frame-in { width: var(--scan-size); height: var(--scan-size); animation: m-frame-in 560ms var(--m-ease) both; }
+.m-frame-out { width: 0; height: 0; animation: m-frame-out 300ms cubic-bezier(0.7, 0, 0.84, 0) both; }
+@keyframes m-scan-up-in { from { opacity: 0; transform: translateY(-14px); } to { opacity: 1; transform: none; } }
+@keyframes m-scan-down-in { from { opacity: 0; transform: translateY(22px); } to { opacity: 1; transform: none; } }
+@keyframes m-scan-up-out { to { opacity: 0; transform: translateY(-14px); } }
+@keyframes m-scan-down-out { to { opacity: 0; transform: translateY(22px); } }
+.m-scan-in-up { animation: m-scan-up-in 420ms 160ms var(--m-ease) both; }
+.m-scan-in-down { animation: m-scan-down-in 460ms 220ms var(--m-ease) both; }
+.m-scan-out-up { animation: m-scan-up-out 240ms ease-in both; }
+.m-scan-out-down { animation: m-scan-down-out 240ms ease-in both; }
+@keyframes m-scan-fade { to { opacity: 0; } }
+.m-scan-away { animation: m-scan-fade 160ms 280ms linear both; }
+
+/* ── Scroll bars: a slim rounded thumb, not the shared square one ── */
+::-webkit-scrollbar { width: 8px; height: 8px; }
+::-webkit-scrollbar-thumb { background: var(--border); background-clip: padding-box; border: 2px solid transparent; border-radius: 999px; }
+::-webkit-scrollbar-thumb:hover { background: var(--muted-foreground); background-clip: padding-box; }
+
 
 /* ── What the system setting turns off ────────────────────────────── */
 @media (prefers-reduced-motion: reduce) {

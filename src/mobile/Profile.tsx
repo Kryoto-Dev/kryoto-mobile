@@ -222,6 +222,7 @@ export function Profile() {
         </div>
       ) : null}
       <div className={cn('grid gap-6 px-4 pb-8', account ? 'pt-14' : 'pt-5')}>
+        <LinkRow label="Notifications & updates" onClick={() => push({ kind: 'notifications' })} />
         {account && view ? (
           <div className="grid gap-2">
             <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5">

@@ -25,6 +25,8 @@ import { Toast } from '@/mobile/parts'
 import { applyLook } from '@/mobile/look'
 import { store, type Links } from '@/mobile/storage'
 import { Store } from '@/mobile/Store'
+import { NotificationsPage, UpdatePrompt } from '@/mobile/Notifications'
+import { useMobileNotifications } from '@/mobile/platform'
 
 type Phase = 'splash' | 'welcome' | 'main'
 type Tab = 'store' | 'library' | 'profile'
@@ -42,6 +44,7 @@ export function App() {
   const [links, setLinksState] = useState<Links>(store.link)
   const [signingIn, setSigningIn] = useState(false)
   const [tab, setTab] = useState<Tab>('store')
+  const [downloadsRequest, setDownloadsRequest] = useState(0)
   const [stack, setStack] = useState<Page[]>([])
   const [message, setMessage] = useState<string | null>(null)
   const [slide, setSlide] = useState(28)
@@ -88,6 +91,7 @@ export function App() {
   }, [setLinks])
 
   const link = useLibraryLink(token, links, toast, signedOut, dropRelay)
+  useMobileNotifications(token, links, link.snapshot, toast)
 
   // A phone linked to a PC looks like it: the palette, corners, typeface and
   // theme Kryoto Desktop is using now. The last one sent is kept for the next start.
@@ -148,6 +152,20 @@ export function App() {
     setStack((cur) => [...cur, page])
   }, [])
   const back = useCallback(() => history.back(), [])
+  useEffect(() => {
+    const opened = (e: Event) => {
+      const target = (e as CustomEvent<string>).detail
+      if (target === 'downloads') {
+        if (depth.current > 0) history.go(-depth.current)
+        depth.current = 0
+        setTab('library')
+        setStack([])
+        setDownloadsRequest((n) => n + 1)
+      } else if (target === 'notifications') push({ kind: 'notifications' })
+    }
+    window.addEventListener('mobile-notification-open', opened)
+    return () => window.removeEventListener('mobile-notification-open', opened)
+  }, [push])
   const openTab = (next: Tab) => {
     if (next !== tab) setSlide(TABS.findIndex((t) => t.id === next) > TABS.findIndex((t) => t.id === tab) ? 28 : -28)
     if (depth.current > 0) history.go(-depth.current)
@@ -209,7 +227,7 @@ export function App() {
                 style={{ '--kryo-slide': `${slide}px` } as CSSProperties}
                 className={cn('absolute inset-0 z-0 overflow-y-auto overscroll-contain pb-28', tab === t.id ? 'kryo-slide' : 'hidden')}
               >
-                {t.id === 'store' ? <Store /> : t.id === 'library' ? <Library /> : <Profile />}
+                {t.id === 'store' ? <Store /> : t.id === 'library' ? <Library downloadsRequest={downloadsRequest} /> : <Profile />}
               </div>
             ))}
             {page ? (
@@ -220,6 +238,8 @@ export function App() {
                   <LibraryGamePage id={page.id} />
                 ) : page.kind === 'approve' ? (
                   <ApprovePage code={page.code} />
+                ) : page.kind === 'notifications' ? (
+                  <NotificationsPage />
                 ) : (
                   <ConnectPage />
                 )}
@@ -267,6 +287,7 @@ export function App() {
           />
         ) : null}
         <Toast message={message} />
+        {phase === 'main' ? <UpdatePrompt /> : null}
       </main>
     </AppContextProvider.Provider>
   )

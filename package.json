@@ -1,11 +1,15 @@
 {
   "name": "kryoto-mobile",
   "private": true,
-  "version": "0.2.25",
+  "version": "0.2.26",
   "license": "MIT",
   "type": "module",
   "scripts": {
     "dev": "vite --config vite.mobile.config.ts",
+    "test:pairing": "node scripts/test-pairing.mjs",
+    "test:routing": "node scripts/test-notification-routing.mjs",
+    "test:android": "node scripts/test-android.mjs",
+    "test:desktop-android": "node scripts/test-desktop-android.mjs",
     "check:shared": "node scripts/shared.mjs check",
     "sync:shared": "node scripts/shared.mjs sync",
     "build": "node scripts/shared.mjs check && tsc --noEmit && vite build --config vite.mobile.config.ts && node -e \"require('fs').renameSync('dist-mobile/mobile.html','dist-mobile/index.html')\"",

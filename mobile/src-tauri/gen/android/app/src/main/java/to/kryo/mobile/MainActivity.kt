@@ -1,6 +1,7 @@
 package to.kryo.mobile
 
 import android.content.pm.PackageManager
+import android.content.Intent
 import android.graphics.Color
 import android.os.Build
 import android.os.Bundle
@@ -13,6 +14,7 @@ import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 
 class MainActivity : TauriActivity() {
+  companion object { var notificationTarget: String? = null }
   private var webView: WebView? = null
   private var insetsJson = """{"top":0,"bottom":0,"left":0,"right":0}"""
 
@@ -21,6 +23,12 @@ class MainActivity : TauriActivity() {
     super.onCreate(savedInstanceState)
     trackSystemBars()
     requestLocalNetworkAccess()
+    notificationTarget = intent?.getStringExtra("notificationTarget")
+  }
+
+  override fun onNewIntent(intent: Intent) {
+    super.onNewIntent(intent)
+    notificationTarget = intent.getStringExtra("notificationTarget")
   }
 
   override fun onWebViewCreate(webView: WebView) {

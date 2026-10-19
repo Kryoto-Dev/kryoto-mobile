@@ -17,7 +17,7 @@ export class ApiError extends Error {
   }
 }
 
-type Options = { method?: 'GET' | 'POST' | 'PUT' | 'DELETE'; token?: string | null; body?: unknown }
+type Options = { method?: 'GET' | 'POST' | 'PUT' | 'DELETE'; token?: string | null; body?: unknown; timeoutMs?: number }
 
 function hostOf(url: string): string {
   try {
@@ -28,7 +28,7 @@ function hostOf(url: string): string {
 }
 
 /** Resolves for 2xx with the parsed body; otherwise throws the server's own error text. */
-export async function request<T = Record<string, unknown>>(url: string, { method = 'GET', token, body }: Options = {}): Promise<{ status: number; json: T }> {
+export async function request<T = Record<string, unknown>>(url: string, { method = 'GET', token, body, timeoutMs = 15_000 }: Options = {}): Promise<{ status: number; json: T }> {
   const headers: [string, string][] = []
   if (token) headers.push(['authorization', `Bearer ${token}`])
   if (body !== undefined) headers.push(['content-type', 'application/json'])
@@ -38,11 +38,11 @@ export async function request<T = Record<string, unknown>>(url: string, { method
   let text: string
   try {
     if (isTauri()) {
-      const res = await invoke<{ status: number; body: string }>('net_request', { req: { url, method, headers, body: payload } })
+      const res = await invoke<{ status: number; body: string }>('net_request', { req: { url, method, headers, body: payload, timeoutMs } })
       status = res.status
       text = res.body
     } else {
-      const res = await fetch(url, { method, headers: Object.fromEntries(headers), body: payload, credentials: 'omit' })
+      const res = await fetch(url, { method, headers: Object.fromEntries(headers), body: payload, credentials: 'omit', signal: AbortSignal.timeout(timeoutMs) })
       status = res.status
       text = await res.text()
     }

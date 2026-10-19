@@ -8,7 +8,8 @@ Android companion for [Kryoto Desktop](https://github.com/Kryoto-Dev/kryoto-desk
 **Kryoto** · Tauri 2 (Rust) + React · MIT · [Download](https://github.com/Kryoto-Dev/kryoto-mobile/releases/latest) · [All repos](https://github.com/Kryoto-Dev)
 
 Install the APK for your phone (`arm64-v8a` for most modern phones). On the same Wi-Fi, open
-Settings > Phone in Desktop and scan its QR code, or enter the address and six-digit code.
+Settings > Phone in Desktop and scan its QR code, or choose Manual and enter the address and six-digit code.
+New QR codes also connect through kryo.to when both devices are signed in to the same account.
 Desktop must include the phone server (`src-tauri/src/phone.rs`, `/v1/...` routes).
 
 The app includes the catalog, requests, achievements and your kryo.to profile. Downloads started
@@ -45,6 +46,9 @@ Release builds strip Rust symbols; use `pnpm android:build --debug` for a debug 
 
 ```bash
 pnpm build                              # shared-file check, typecheck and UI build (dist-mobile/)
+pnpm test:pairing                       # with pnpm dev running; Playwright Chromium required
+pnpm test:android                       # debug emulator WebView forwarded to port 9334, ADB on PATH
+pnpm test:desktop-android               # also a dev Desktop WebView on port 9333
 ```
 
 CI runs this on Ubuntu for every push to `main` and every pull request.
@@ -69,8 +73,28 @@ Bump the version in `package.json`, `mobile/src-tauri/Cargo.toml` and
 
 Set `ANDROID_KEYSTORE_BASE64` and `ANDROID_KEYSTORE_PASSWORD` in the repository's Actions
 secrets to keep the signing key between releases; `ANDROID_KEY_ALIAS` and `ANDROID_KEY_PASSWORD`
-are optional. Without a saved key, CI uses a temporary one and the previous app must be
-uninstalled before installing the new release. Updates are installed manually from Releases.
+are optional. Releases fail without a saved key. The app checks for new versions on launch
+and offers to download and install the matching APK, with Android's confirmation. Profile >
+Notifications & updates has a manual check. Downloads are checked against the release size,
+SHA-256 (when supplied by GitHub), package name, version and installed signing certificate.
+
+Versions before 0.2.26 used temporary signing keys. Moving from one of those releases needs
+one uninstall/reinstall; later stable releases keep the same key and install in place.
+
+## Android notifications
+
+Profile > Notifications & updates contains only this app's notification choices, plus a
+shortcut to Android's notification permissions. All types start off. Enable download
+completion/failure, request progress, community replies, news or account alerts separately.
+These choices do not change website, email or Discord preferences.
+
+Native WorkManager checks continue after the WebView closes, about every 15 minutes (Android
+may delay them to save power). Optional Follow active downloads starts a visible foreground
+service when you view an active download and follows it every five seconds after you leave.
+It stops after downloads finish, the PC stays unreachable, tracking is disabled, or Android's
+background time limit is reached. Notification taps open Downloads or the mobile notifications
+page. Tokens are kept in app-private storage, backups are disabled, and signing out clears
+native account delivery state.
 
 ## License
 

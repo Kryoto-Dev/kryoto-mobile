@@ -4,6 +4,8 @@ import { ApiError, request } from '@/mobile/net'
 import { store, type LanLink, type Links } from '@/mobile/storage'
 import type { PhoneAchievements, PhoneDownload, PhoneGame, PhoneSnapshot } from '@/mobile/types'
 import { solveCheck } from '@/mobile/turnstile'
+import { mobileStatus } from '@/mobile/platform'
+import { isTauri } from '@/lib/bridge'
 
 /**
  * The phone's line to a PC: on this network (the PC's own server) or through
@@ -30,13 +32,23 @@ export interface Link {
 
 export type DownloadAction = 'pause' | 'resume' | 'cancel' | 'remove'
 
-const HOST = /^\d{1,3}(\.\d{1,3}){3}:\d{2,5}$/
+const HOST = /^\d{1,3}(\.\d{1,3}){3}:\d{1,5}$/
+
+/** Keep QR requests on private networks, before handing anything to native code. */
+export function isLanHost(host: string): boolean {
+  if (!HOST.test(host)) return false
+  const [address, port] = host.split(':')
+  const octets = address!.split('.').map(Number)
+  const [a, b] = octets
+  return octets.join('.') === address && octets.every((n) => n >= 0 && n <= 255) && Number(port) > 0 && Number(port) <= 65535 &&
+    (a === 10 || (a === 172 && b! >= 16 && b! <= 31) || (a === 192 && b === 168))
+}
 
 export function lanLink(cfg: LanLink): Link {
   const url = (path: string) => `http://${cfg.host}/v1/${path}`
   const post = async <T = { deleted?: boolean }>(path: string, body: Record<string, unknown>) => (await request<T>(url(path), { method: 'POST', token: cfg.token, body })).json
   return {
-    snapshot: async () => ({ snapshot: (await request<PhoneSnapshot>(url('snapshot'), { token: cfg.token })).json, online: true, at: Date.now() }),
+    snapshot: async () => ({ snapshot: (await request<PhoneSnapshot>(url('snapshot'), { token: cfg.token, timeoutMs: 3_000 })).json, online: true, at: Date.now() }),
     play: async (id) => void (await post('play', { id })),
     stop: async (id) => void (await post('stop', { id })),
     needsCheck: true,
@@ -111,8 +123,8 @@ export function atLeast(version: string, min: string): boolean {
  */
 export async function accountMachines(token: string): Promise<AccountMachine[]> {
   const [desktops, forge] = await Promise.all([
-    request<{ devices?: RemoteDevice[] }>(`${API}/api/desktop/remote`, { token }).then((r) => r.json.devices ?? []),
-    request<{ agents?: ForgeAgent[] }>(`${API}/api/forge/agents`, { token })
+    request<{ devices?: RemoteDevice[] }>(`${API}/api/desktop/remote`, { token, timeoutMs: 5_000 }).then((r) => r.json.devices ?? []),
+    request<{ agents?: ForgeAgent[] }>(`${API}/api/forge/agents`, { token, timeoutMs: 5_000 })
       .then((r) => r.json.agents ?? [])
       .catch(() => [] as ForgeAgent[]),
   ])
@@ -153,19 +165,26 @@ export function relayLink(token: string, installId: string): Link {
 /** Pair with a PC on this network: its address and the 6-digit code on its screen. */
 export async function pairLan(host: string, code: string): Promise<LanLink> {
   const address = host.trim()
-  if (!HOST.test(address)) throw new Error("Enter the PC's address like 192.168.1.5:47821.")
+  if (!isLanHost(address)) throw new Error("Enter the PC's private address like 192.168.1.5:47821.")
+  if (!/^\d{6}$/.test(code.trim())) throw new Error('Enter the 6-digit code shown on the PC.')
+  if (isTauri()) {
+    const status = await mobileStatus().catch(() => null)
+    if (status && !status.localNetwork) throw new Error('Local network access is off. Open Android settings for Kryoto Mobile and allow local network access, then try again. You can also connect through My Kryoto devices.')
+  }
   const reply = await request<{ token: string; installId: string; name: string }>(`http://${address}/v1/pair`, {
     method: 'POST',
     body: { code: code.trim(), deviceName: 'Kryoto Mobile' },
+    timeoutMs: 5_000,
   }).catch((e: unknown) => {
     if (e instanceof ApiError && e.message === 'Blocked address.') throw new Error('That is not a home-network address.')
     throw e
   })
+  if (typeof reply.json.token !== 'string' || !reply.json.token || typeof reply.json.installId !== 'string' || !/^[a-zA-Z0-9-]{8,80}$/.test(reply.json.installId) || typeof reply.json.name !== 'string') throw new Error('The PC sent an incomplete pairing response. Update Kryoto Desktop and try a new code.')
   return { host: address, token: reply.json.token, installId: reply.json.installId, name: reply.json.name }
 }
 
 /** What a PC's QR code says: its addresses and the code (`kryoto://pair?c=&h=&h=`). Null for anything else. */
-export function parsePairingUri(text: string): { code: string; hosts: string[] } | null {
+export function parsePairingUri(text: string): { code: string; hosts: string[]; installId?: string } | null {
   let url: URL
   try {
     url = new URL(text.trim())
@@ -174,27 +193,54 @@ export function parsePairingUri(text: string): { code: string; hosts: string[] }
   }
   if (url.protocol !== 'kryoto:' || url.hostname !== 'pair') return null
   const code = url.searchParams.get('c') ?? ''
-  const hosts = url.searchParams.getAll('h').filter((h) => HOST.test(h))
-  return /^\d{6}$/.test(code) && hosts.length ? { code, hosts: hosts.slice(0, 8) } : null
+  const hosts = [...new Set(url.searchParams.getAll('h').filter(isLanHost))].slice(0, 8)
+  const id = url.searchParams.get('i') ?? ''
+  const installId = /^[a-zA-Z0-9-]{8,80}$/.test(id) ? id : undefined
+  return /^\d{6}$/.test(code) && (hosts.length || installId) ? { code, hosts, installId } : null
 }
 
 /**
  * Pair from a scanned QR code. A PC lists every address it has; the phone
- * tries each in turn and moves on only when one cannot be reached. A wrong or
- * used code is final: trying the others would only burn the PC's attempts.
+ * probes all addresses without consuming a code, then pairs exactly once.
+ * A new QR also identifies the PC on the signed-in account for Remote fallback.
  */
-export async function pairFromQr(text: string): Promise<LanLink> {
+export async function pairFromQr(text: string, token?: string | null): Promise<Links> {
   const parsed = parsePairingUri(text)
   if (!parsed) throw new Error("That is not a Kryoto pairing code. Scan the QR code in the PC's Settings > Phone.")
-  for (const host of parsed.hosts) {
+
+  // Probe without spending the one-use code. VPNs and virtual adapters must not
+  // delay the real Wi-Fi address, nor race multiple pairing POSTs against it.
+  const probe = async (host: string) => {
     try {
-      return await pairLan(host, parsed.code)
+      const { json } = await request<{ installId: string; protocol: number }>(`http://${host}/v1/info`, { timeoutMs: 2_500 })
+      if (json.protocol === 1 && typeof json.installId === 'string' && (!parsed.installId || json.installId === parsed.installId)) return host
     } catch (e) {
-      if (!(e instanceof ApiError) || e.status !== 0) throw e
+      // Desktop versions before /info can still pair from their old QR codes.
+      if (!parsed.installId && e instanceof ApiError && e.status === 404) {
+        try { await request(`http://${host}/v1/snapshot`, { timeoutMs: 2_500 }) }
+        catch (legacy) { if (legacy instanceof ApiError && legacy.status === 401 && legacy.message === 'Pair this phone again.') return host }
+      }
+    }
+    throw new Error('Unreachable')
+  }
+  // A denied Android permission fails fast instead of waiting on every IP.
+  const localAllowed = !isTauri() || (await mobileStatus().catch(() => null))?.localNetwork !== false
+  const [host, machines] = await Promise.all([
+    localAllowed ? Promise.any(parsed.hosts.map(probe)).catch(() => null) : Promise.resolve(null),
+    token && parsed.installId ? accountMachines(token).catch(() => []) : Promise.resolve([]),
+  ])
+  const machine = machines.find((m) => m.kind === 'desktop' && m.id === parsed.installId && m.reachable)
+  const relay = machine ? { installId: machine.id, name: machine.name } : undefined
+  if (host) {
+    try {
+      const lan = await pairLan(host, parsed.code)
+      return { lan, relay }
+    } catch (e) {
+      if (!relay) throw e
     }
   }
-  // Each failure says the same thing; the addresses tried are what helps.
-  throw new Error(`Could not reach the PC at ${parsed.hosts.join(', ')}. Check Kryoto Desktop is open and this phone is on the same Wi-Fi.`)
+  if (relay) return { relay }
+  throw new Error('Could not reach this PC. Allow local network access for Kryoto Mobile and private-network access for Kryoto Desktop in the PC firewall. Guest Wi-Fi and VPNs can block pairing. You can also sign in on both devices and choose the PC under My Kryoto devices.')
 }
 
 export type LinkState = 'live' | 'offline' | 'unlinked'
@@ -268,7 +314,8 @@ export function useLibraryLink(
       via.current = null
       return
     }
-    setSnapshot((cur) => cur ?? kept({ lan, relay: relayId ? { installId: relayId, name: '' } : undefined }))
+    setSnapshot((cur) => cur?.installId === (lan?.installId ?? relayId) ? cur : kept({ lan, relay: relayId ? { installId: relayId, name: '' } : undefined }))
+    setStarting(new Set())
 
     let stopped = false
     let busy = false
@@ -296,7 +343,7 @@ export function useLibraryLink(
           if (e instanceof ApiError && e.status === 401) toast('This PC no longer knows this phone. Pair again.')
         }
       }
-      if (relayLinkNow && (!lanLinkNow || lanFails >= 2)) {
+      if (relayLinkNow && (!lanLinkNow || lanFails >= 1)) {
         relayMode = true
         try {
           return { got: await relayLinkNow.snapshot(), by: 'relay' }

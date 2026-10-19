@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { ArrowDownUp, Hammer, LayoutGrid, List, Monitor, Play, ScanLine, Search, Square, Trash2 } from 'lucide-react'
+import { ArrowDownUp, ArrowLeft, Bell, ChevronRight, Hammer, LayoutGrid, List, Monitor, Play, ScanLine, Search, Square, Trash2 } from 'lucide-react'
 import { Button, Caption, inputCls } from '@/ui'
 import { cn } from '@/lib/utils'
 import { isTauri } from '@/lib/bridge'
@@ -15,6 +15,7 @@ import { DownloadsIcon, GamesIcon } from '@/mobile/icons'
 import { store, type SortMode, type ViewMode } from '@/mobile/storage'
 import { ScanCancelled, scanQr } from '@/mobile/scan'
 import type { PhoneGame } from '@/mobile/types'
+import { mobileAction } from '@/mobile/platform'
 
 const SORT_LABEL: Record<SortMode, string> = {
   alpha: 'A-Z',
@@ -38,14 +39,17 @@ function sorted(games: PhoneGame[], mode: SortMode): PhoneGame[] {
 }
 
 /** Library: the games on the linked PC, started and stopped from here. */
-export function Library() {
+export function Library({ downloadsRequest = 0 }: { downloadsRequest?: number } = {}) {
   const { link, push } = useApp()
   const { snapshot, state, lastSeen, starting, play, stop } = link
   const [view, setView] = useState<ViewMode>(store.view)
   const [sort, setSort] = useState<SortMode>(store.sort)
   const [sheet, setSheet] = useState(false)
   const [filter, setFilter] = useState('')
-  const [section, setSection] = useState<'games' | 'downloads'>('games')
+  const [section, setSection] = useState<'games' | 'downloads'>(downloadsRequest ? 'downloads' : 'games')
+  useEffect(() => {
+    if (downloadsRequest) setSection('downloads')
+  }, [downloadsRequest])
   const [manage, setManage] = useState(false)
   const [removing, setRemoving] = useState<PhoneGame | null>(null)
 
@@ -102,6 +106,7 @@ export function Library() {
               {snapshot.games.length} {snapshot.games.length === 1 ? 'game' : 'games'} on {snapshot.name}
             </Caption>
           </div>
+          <Button size="sm" aria-label="Notifications and updates" onClick={() => push({ kind: 'notifications' })}><Bell className="size-4" /></Button>
           {games ? (
             <>
               <Button size="sm" onClick={() => setSheet(true)} aria-label="Sort">
@@ -400,6 +405,7 @@ export function Connect({ onDone }: { onDone?: () => void }) {
   const [port, setPort] = useState(links.lan?.host.split(':')[1] ?? '47821')
   const [code, setCode] = useState('')
   const [pairing, setPairing] = useState(false)
+  const [manual, setManual] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [machine, setMachine] = useState<AccountMachine | null>(null)
   const hostField = useRef<HTMLInputElement | null>(null)
@@ -409,7 +415,7 @@ export function Connect({ onDone }: { onDone?: () => void }) {
     setError(null)
     try {
       const lan = await pairLan(`${host.trim()}:${port.trim()}`, code)
-      setLinks({ ...links, lan })
+      setLinks({ lan, relay: links.relay?.installId === lan.installId ? links.relay : undefined })
       toast(`Paired with ${lan.name}.`)
       onDone?.()
     } catch (e) {
@@ -423,9 +429,9 @@ export function Connect({ onDone }: { onDone?: () => void }) {
     setPairing(true)
     setError(null)
     try {
-      const lan = await pairFromQr(await scanQr())
-      setLinks({ ...links, lan })
-      toast(`Paired with ${lan.name}.`)
+      const next = await pairFromQr(await scanQr(), token)
+      setLinks(next)
+      toast(`Connected to ${next.lan?.name ?? next.relay?.name}.`)
       onDone?.()
     } catch (e) {
       if (!(e instanceof ScanCancelled)) setError(e instanceof Error ? e.message : String(e))
@@ -441,7 +447,8 @@ export function Connect({ onDone }: { onDone?: () => void }) {
         <p className="mx-auto max-w-xs text-xs leading-relaxed text-muted-foreground">Turn on Phone in Kryoto Desktop's Settings, then link it here.</p>
       </div>
       {error ? <p className="kryo-radius border border-destructive/50 px-3 py-2 text-xs leading-relaxed text-destructive">{error}</p> : null}
-      {isTauri() ? (
+      {error && isTauri() ? <Button onClick={() => void mobileAction('settings', { section: 'network' }).catch((e: unknown) => toast(String(e)))}>Open Android app permissions</Button> : null}
+      {!manual && isTauri() ? (
         <section className="kryo-radius grid gap-3 border border-border bg-card p-4">
           <Caption className="font-bold text-foreground/80">Scan a QR code</Caption>
           <p className="text-xs leading-relaxed text-muted-foreground">On the PC, open Kryoto Desktop's Settings, then Phone, turn on "On this network", and scan the code it shows.</p>
@@ -451,7 +458,11 @@ export function Connect({ onDone }: { onDone?: () => void }) {
           </Button>
         </section>
       ) : null}
-      <section className="kryo-radius grid gap-3 border border-border bg-card p-4">
+      <Button onClick={() => setManual(!manual)} aria-expanded={manual}>
+        {manual ? <ArrowLeft className="size-4" /> : <ChevronRight className="size-4" />}
+        {manual ? 'Back to QR code' : 'Enter details manually'}
+      </Button>
+      {manual ? <section className="kryo-slide kryo-radius grid gap-3 border border-border bg-card p-4" style={{ '--kryo-slide': '40px' } as React.CSSProperties}>
         <Caption className="font-bold text-foreground/80">Enter it by hand</Caption>
         <label className="grid gap-1">
           <Caption>PC address</Caption>
@@ -490,15 +501,15 @@ export function Connect({ onDone }: { onDone?: () => void }) {
         <Button disabled={pairing || code.length !== 6 || !host.trim() || !port.trim()} onClick={() => void pair()}>
           {pairing ? 'Pairing...' : 'Pair'}
         </Button>
-      </section>
+      </section> : null}
       <section className="kryo-radius grid gap-3 border border-border bg-card p-4">
-        <Caption className="font-bold text-foreground/80">On your kryo.to account</Caption>
+        <Caption className="font-bold text-foreground/80">My Kryoto devices</Caption>
         {signedIn && token ? (
           <Machines
             token={token}
             onPick={(m) => {
               if (!m.reachable) return setMachine(m)
-              setLinks({ ...links, relay: { installId: m.id, name: m.name } })
+              setLinks({ lan: links.lan?.installId === m.id ? links.lan : undefined, relay: { installId: m.id, name: m.name } })
               onDone?.()
             }}
             fail={fail}
@@ -523,8 +534,8 @@ export function Connect({ onDone }: { onDone?: () => void }) {
         }
         onType={() => {
           setMachine(null)
-          hostField.current?.scrollIntoView({ block: 'center', behavior: 'smooth' })
-          hostField.current?.focus()
+          setManual(true)
+          window.setTimeout(() => hostField.current?.focus(), 0)
         }}
       />
     </div>

@@ -60,7 +60,7 @@ export const store = {
     const lan = raw?.lan
     if (lan && isString(lan.host) && isString(lan.token) && isString(lan.installId) && typeof lan.name === 'string') out.lan = lan
     const relay = raw?.relay
-    if (relay && isString(relay.installId) && typeof relay.name === 'string') out.relay = relay
+    if (relay && isString(relay.installId) && typeof relay.name === 'string' && (!out.lan || out.lan.installId === relay.installId)) out.relay = relay
     return out
   },
   setLink: (l: Links) => write(KEYS.link, l.lan || l.relay ? JSON.stringify(l) : null),

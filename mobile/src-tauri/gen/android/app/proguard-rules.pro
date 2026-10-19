@@ -31,3 +31,13 @@
 -keep class * implements com.google.firebase.components.ComponentRegistrar { <init>(); }
 -keep class androidx.camera.** { *; }
 -keep class app.tauri.barcodescanner.** { *; }
+# Registered by Rust by class name; @Command methods and args are reflected.
+-keep class to.kryo.mobile.MobilePlugin { *; }
+-keep class to.kryo.mobile.MobileArgs { *; }
+-keep class to.kryo.mobile.MobileNotificationWorker { *; }
+# WorkManager/Room construct their database and startup components by name.
+# AGP's optimized release build otherwise strips WorkDatabase_Impl's ctor.
+-keep class androidx.work.** { *; }
+-keep class androidx.room.** { *; }
+-keep class androidx.sqlite.** { *; }
+-keep class androidx.startup.** { *; }

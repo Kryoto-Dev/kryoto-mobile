@@ -19,8 +19,8 @@ name: Release
 # be signed. With the ANDROID_KEYSTORE_BASE64 / ANDROID_KEYSTORE_PASSWORD
 # (and optional ANDROID_KEY_ALIAS / ANDROID_KEY_PASSWORD) secrets set, every
 # release is signed with that same key, so a new version installs over the
-# last one. Without them CI falls back to a throwaway key per run and warns:
-# each file still installs, but only after the old version is uninstalled.
+# last one. A missing key fails the release rather than publishing APKs that
+# cannot update an existing installation.
 #
 # A debug APK (Kryoto-Mobile_<version>_debug.apk, 64-bit phones and
 # emulators) rides along: not minified, WebView debugging on, signed with
@@ -136,7 +136,7 @@ jobs:
           "$SDKMANAGER" --sdk_root="$SDKROOT" --update || true
           yes | "$SDKMANAGER" --sdk_root="$SDKROOT" --licenses || true
 
-          packages=( "platform-tools" "platforms;android-35" "build-tools;35.0.0" "ndk;27.0.12077973" )
+          packages=( "platform-tools" "platforms;android-37" "build-tools;35.0.0" "ndk;27.0.12077973" )
           attempts=0
           until [ $attempts -ge 3 ]; do
             attempts=$((attempts + 1))
@@ -158,6 +158,12 @@ jobs:
           echo "NDK_HOME=$SDKROOT/ndk/27.0.12077973" >> "$GITHUB_ENV"
           "$SDKMANAGER" --sdk_root="$SDKROOT" --list_installed || true
       - run: pnpm install --frozen-lockfile
+      - name: Require stable Android signing
+        env:
+          KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+        run: |
+          test -n "$KEYSTORE_BASE64" && test -n "$KEYSTORE_PASSWORD" || { echo "::error::Configure stable Android signing secrets before releasing."; exit 1; }
 
       # Release, not debug: no --debug flag, so the Rust lib builds with
       # [profile.release] (opt-level=z, stripped) and Gradle assembles the
@@ -191,10 +197,8 @@ jobs:
             echo "$KEYSTORE_BASE64" | base64 -d > /tmp/release.jks
             STOREPASS="$KEYSTORE_PASSWORD"; ALIAS="${KEY_ALIAS:-kryoto}"; KEYPASS="${KEY_PASSWORD:-$KEYSTORE_PASSWORD}"
           else
-            echo "::warning::No ANDROID_KEYSTORE_BASE64 secret, so this release is signed with a throwaway key and will not install over the previous version. Set the keystore secrets to sign every release with one key."
-            keytool -genkeypair -v -keystore /tmp/release.jks -alias kryoto -keyalg RSA -keysize 2048 -validity 9125 \
-              -storepass android -keypass android -dname "CN=Kryoto, OU=Mobile, O=Kryoto, C=BE"
-            STOREPASS=android; ALIAS=kryoto; KEYPASS=android
+            echo "::error::A stable Android signing key is required. Configure ANDROID_KEYSTORE_BASE64 and ANDROID_KEYSTORE_PASSWORD before releasing."
+            exit 1
           fi
           mkdir -p out
           for apk in mobile/src-tauri/gen/android/app/build/outputs/apk/universal/release/*.apk \
@@ -231,4 +235,4 @@ jobs:
           VERSION: ${{ needs.check.outputs.version }}
         run: |
           gh release create "v$VERSION" out/*.apk --title "Kryoto Mobile v$VERSION" \
-            --notes "Kryoto Mobile v$VERSION for Android. Pick the APK for your phone (arm64-v8a on almost every modern phone); it installs directly, no updater yet. The _debug APK is for testing."
+            --notes "Kryoto Mobile v$VERSION for Android. Faster QR pairing with account fallback, simpler connection screens, optional Android notifications and in-app updates. Pick arm64-v8a for most phones. Releases before 0.2.26 used temporary signing keys: uninstall an older build once before installing this stable release. Future stable updates install in the app. The _debug APK is for testing."

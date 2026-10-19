@@ -9,6 +9,7 @@
 use serde::{Deserialize, Serialize};
 use std::time::Duration;
 use url::{Host, Url};
+mod platform;
 
 #[derive(Deserialize)]
 pub struct NetRequest {
@@ -17,6 +18,8 @@ pub struct NetRequest {
     #[serde(default)]
     headers: Vec<(String, String)>,
     body: Option<String>,
+    #[serde(default, rename = "timeoutMs")]
+    timeout_ms: Option<u64>,
 }
 
 #[derive(Serialize)]
@@ -58,7 +61,7 @@ async fn net_request(req: NetRequest) -> Result<NetResponse, String> {
         _ => return Err("Blocked address.".into()),
     };
     let client = reqwest::Client::builder()
-        .timeout(Duration::from_secs(15))
+        .timeout(Duration::from_millis(req.timeout_ms.unwrap_or(15_000).clamp(500, 30_000)))
         .redirect(reqwest::redirect::Policy::none())
         .build()
         .map_err(|e| e.to_string())?;
@@ -103,10 +106,12 @@ fn is_pc(host: &str) -> bool {
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     let builder = tauri::Builder::default().plugin(tauri_plugin_opener::init());
+    #[cfg(target_os = "android")]
+    let builder = builder.plugin(platform::init());
     #[cfg(any(target_os = "android", target_os = "ios"))]
     let builder = builder.plugin(tauri_plugin_barcode_scanner::init());
     builder
-        .invoke_handler(tauri::generate_handler![net_request])
+        .invoke_handler(tauri::generate_handler![net_request, platform::mobile_action])
         .run(tauri::generate_context!())
         .expect("error while running Kryoto Mobile");
 }

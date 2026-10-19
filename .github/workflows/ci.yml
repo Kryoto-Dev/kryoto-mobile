@@ -38,6 +38,13 @@ jobs:
       - name: Shared files match shared.json
         run: pnpm check:shared
       - run: pnpm build
+      - run: pnpm exec playwright install --with-deps chromium
+      - name: Pairing regressions
+        run: |
+          pnpm dev > /tmp/mobile-vite.log 2>&1 &
+          for i in $(seq 1 30); do curl -fsS http://localhost:1423/mobile.html >/dev/null && break; sleep 1; done
+          pnpm test:pairing
+          pnpm test:routing
 
   behind-desktop:
     name: Shared files vs Desktop main (warning only)

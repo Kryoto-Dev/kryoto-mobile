@@ -63,7 +63,7 @@ const updatedMs = (e: SavedEntry) => Date.parse(e.updatedAt ?? '') || 0
 /** Profile: the account, what you have played on the PC, and the PC link. */
 export function Profile() {
   const { token, me, signedIn, signIn, signOut, links, setLinks, link, push, toast, fail } = useApp()
-  const { snapshot, state } = link
+  const { snapshot, state, route } = link
   const [counts, setCounts] = useState<Partial<SavedCounts> | null>(null)
   const [entries, setEntries] = useState<SavedEntry[]>([])
   const [copied, setCopied] = useState(false)
@@ -115,7 +115,17 @@ export function Profile() {
 
   const linked = !!(links.lan || links.relay)
   const pcName = links.lan?.name || links.relay?.name || ''
-  const how = links.lan && state !== 'offline' ? 'On this network' : links.relay ? 'Through kryo.to' : 'On this network'
+  // What the last answer actually came through; before the first one, what is set up.
+  const how =
+    state === 'offline'
+      ? 'Not connected right now'
+      : route === 'lan'
+        ? 'Local: on this Wi-Fi'
+        : route === 'relay'
+          ? 'Remote: through kryo.to'
+          : links.lan
+            ? 'Local: on this Wi-Fi'
+            : 'Remote: through kryo.to'
 
   // Who this is: the signed-in account, else whoever is signed in on the linked PC.
   const pc = snapshot?.profile ?? null

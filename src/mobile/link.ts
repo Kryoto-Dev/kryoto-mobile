@@ -245,11 +245,20 @@ export async function pairFromQr(text: string, token?: string | null): Promise<L
 
 export type LinkState = 'live' | 'offline' | 'unlinked'
 
+/** How the last answer arrived: the PC's own server on this Wi-Fi, or kryo.to. */
+export type LinkRoute = 'lan' | 'relay'
+
 export interface LibraryLink {
   snapshot: PhoneSnapshot | null
   state: LinkState
   /** When the PC last answered (or, through kryo.to, last reported), in ms. */
   lastSeen: number | null
+  /**
+   * The route the last answer came by, null before the first one. The phone
+   * falls back to kryo.to by itself when this network fails, so this is the
+   * only honest source for "connected locally / through kryo.to".
+   */
+  route: LinkRoute | null
   play(id: string): Promise<void>
   stop(id: string): Promise<void>
   /** Sends a kryo.to game's download to the PC and says so in a toast. False when it was not sent. */
@@ -299,6 +308,7 @@ export function useLibraryLink(
   const [snapshot, setSnapshot] = useState<PhoneSnapshot | null>(() => kept(links))
   const [state, setState] = useState<LinkState>(links.lan || (links.relay && token) ? 'offline' : 'unlinked')
   const [lastSeen, setLastSeen] = useState<number | null>(null)
+  const [route, setRoute] = useState<LinkRoute | null>(null)
   const [starting, setStarting] = useState<ReadonlySet<string>>(new Set())
   const via = useRef<'lan' | 'relay' | null>(null)
   const refresh = useRef<() => void>(() => {})
@@ -311,6 +321,7 @@ export function useLibraryLink(
     if (!lanLinkNow && !relayLinkNow) {
       setState('unlinked')
       setSnapshot(null)
+      setRoute(null)
       via.current = null
       return
     }
@@ -382,6 +393,7 @@ export function useLibraryLink(
       }
       setState(got.online ? 'live' : 'offline')
       setLastSeen(got.at)
+      setRoute(found.by)
     }
 
     const tick = async () => {
@@ -548,5 +560,5 @@ export function useLibraryLink(
     [active, toast],
   )
 
-  return { snapshot, state, lastSeen, play, stop, download, control, removeGame, achievements, starting }
+  return { snapshot, state, lastSeen, route, play, stop, download, control, removeGame, achievements, starting }
 }

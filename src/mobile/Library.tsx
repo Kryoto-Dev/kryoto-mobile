@@ -41,7 +41,7 @@ function sorted(games: PhoneGame[], mode: SortMode): PhoneGame[] {
 /** Library: the games on the linked PC, started and stopped from here. */
 export function Library({ downloadsRequest = 0 }: { downloadsRequest?: number } = {}) {
   const { link, push } = useApp()
-  const { snapshot, state, lastSeen, starting, play, stop } = link
+  const { snapshot, state, lastSeen, route, starting, play, stop } = link
   const [view, setView] = useState<ViewMode>(store.view)
   const [sort, setSort] = useState<SortMode>(store.sort)
   const [sheet, setSheet] = useState(false)
@@ -104,6 +104,9 @@ export function Library({ downloadsRequest = 0 }: { downloadsRequest?: number } 
             <span className="text-xs font-bold uppercase tracking-[0.2em] text-foreground">Library</span>
             <Caption>
               {snapshot.games.length} {snapshot.games.length === 1 ? 'game' : 'games'} on {snapshot.name}
+              {state === 'live' && route ? (
+                <span className="text-muted-foreground"> · {route === 'lan' ? 'local' : 'remote'}</span>
+              ) : null}
             </Caption>
           </div>
           <Button size="sm" aria-label="Notifications and updates" onClick={() => push({ kind: 'notifications' })}><Bell className="size-4" /></Button>

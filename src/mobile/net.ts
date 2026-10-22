@@ -31,6 +31,9 @@ function hostOf(url: string): string {
 export async function request<T = Record<string, unknown>>(url: string, { method = 'GET', token, body, timeoutMs = 15_000 }: Options = {}): Promise<{ status: number; json: T }> {
   const headers: [string, string][] = []
   if (token) headers.push(['authorization', `Bearer ${token}`])
+  // So kryo.to can tell the PC a phone is connected through it (Settings > Phone).
+  // The app only: a browser preview would turn it into a preflight request.
+  if (isTauri()) headers.push(['x-kryoto-client', 'mobile'])
   if (body !== undefined) headers.push(['content-type', 'application/json'])
   const payload = body === undefined ? null : JSON.stringify(body)
 

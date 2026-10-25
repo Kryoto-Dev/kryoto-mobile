@@ -17,7 +17,7 @@ export class ApiError extends Error {
   }
 }
 
-type Options = { method?: 'GET' | 'POST' | 'PUT' | 'DELETE'; token?: string | null; body?: unknown; timeoutMs?: number }
+type Options = { method?: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE'; token?: string | null; body?: unknown; timeoutMs?: number }
 
 function hostOf(url: string): string {
   try {
@@ -62,8 +62,15 @@ export async function request<T = Record<string, unknown>>(url: string, { method
     json = {}
   }
   if (status < 200 || status >= 300) {
-    const error = json && typeof json === 'object' && 'error' in json ? json.error : null
-    throw new ApiError(typeof error === 'string' && error ? error : `${hostOf(url)} answered ${status}.`, status)
+    const error =
+      json && typeof json === 'object'
+        ? 'message' in json && typeof json.message === 'string' && json.message
+          ? json.message
+          : 'error' in json && typeof json.error === 'string' && json.error
+            ? json.error
+            : null
+        : null
+    throw new ApiError(error ?? `${hostOf(url)} answered ${status}.`, status)
   }
   return { status, json: json as T }
 }

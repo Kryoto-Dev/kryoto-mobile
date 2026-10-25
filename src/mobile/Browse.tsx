@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { CatalogGameCard, UploadCard } from '@/mobile/cards'
 import { compareBy, loadCatalog, SORT_LABEL, useCatalog, type Sort } from '@/mobile/catalog-store'
 import { useApp } from '@/mobile/context'
+import { GenreIcon } from '@/mobile/genre-icons'
 import { Busy, Chip, Notice, Sentinel, Strip } from '@/mobile/parts'
 import { useUploadSlots } from '@/mobile/upload'
 
@@ -71,7 +72,7 @@ export function Browse() {
           All
         </Chip>
         {genres.map((g) => (
-          <Chip key={g} active={genre === g} onClick={() => setGenre(g)}>
+          <Chip key={g} active={genre === g} onClick={() => setGenre(g)} icon={<GenreIcon genre={g} className="size-3.5 shrink-0" />}>
             {g}
           </Chip>
         ))}

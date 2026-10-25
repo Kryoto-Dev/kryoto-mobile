@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { cn } from '@/lib/utils'
 import type { CatalogCard } from '@/mobile/catalog-store'
 import { Poster } from '@/mobile/parts'
+import { VerifiedShield } from '@/mobile/pixel-badges'
 import { hasProgress, nameRevealOf, PHASE_LABEL, revealOf, useLoadingWord, type UploadSlot } from '@/mobile/upload'
 
 const DAY = 86_400_000
@@ -32,7 +33,12 @@ export function CatalogGameCard({ game, onOpen }: { game: CatalogCard; onOpen: (
     <button type="button" onClick={onOpen} className="kryo-radius flex w-full flex-col overflow-hidden border border-border bg-card text-left">
       <div className="relative border-b border-border">
         <Poster src={game.cover} title={game.title} nsfw={!!game.nsfw} ratio="aspect-video" className="!rounded-none !border-0" />
-        {game.nsfw ? <span className={badge}>NSFW</span> : game.verified ? <span className={badge}>Verified</span> : null}
+        {game.nsfw ? <span className={badge}>NSFW</span> : game.verified ? (
+          <span className={cn(badge, 'inline-flex items-center gap-1 pl-1')}>
+            <VerifiedShield className="text-[11px]" />
+            Verified
+          </span>
+        ) : null}
       </div>
       <div className="flex flex-1 flex-col gap-2 p-2.5">
         <h3 className="text-[13px] font-bold leading-tight tracking-tight text-foreground">{game.title}</h3>

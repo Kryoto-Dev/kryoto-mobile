@@ -47,7 +47,35 @@ export type Settings = {
   /** The name in games: your K// username, `playerName`, or each build's own. */
   playerNameMode: PlayerNameMode
   playerName: string
+  /** Cloud saves (saves/ in src-tauri), where kryo.to has them on. */
+  cloudSaves: boolean
+  /** Back a game's saves up when it closes. */
+  cloudSavesOnExit: boolean
+  /** Newer saves from another PC before Play: put them here, or ask first. */
+  cloudSavesRestore: 'auto' | 'ask'
+  /** Watch where games write, to find their saves. */
+  cloudSavesDetect: boolean
+  /** How: `precise` asks for administrator once per game and sees exactly
+   *  which files it writes; `smart` needs no administrator. */
+  cloudSavesFind: 'precise' | 'smart'
+  /** Tell kryo.to the save folders found, so other players' games find theirs. */
+  cloudSavesShare: boolean
+  /** Local backups of replaced saves kept per game. */
+  cloudSavesKeepLocal: number
+  /** The desktop pet (src/pet): out on the screen or put away. */
+  pet: boolean
+  petMascot: PetMascot
+  /** Where it stands, in physical pixels; pet.rs keeps it. */
+  petPos?: [number, number] | null
 }
+
+export type PetMascot = 'telly' | 'kubi' | 'yuki' | 'blip'
+export const PET_MASCOTS: { id: PetMascot; label: string }[] = [
+  { id: 'telly', label: 'Telly' },
+  { id: 'kubi', label: 'Kubi' },
+  { id: 'yuki', label: 'Yuki' },
+  { id: 'blip', label: 'Blip' },
+]
 
 /** How a game's in-game name is picked (src-tauri player_name.rs). */
 export type PlayerNameMode = 'account' | 'custom' | 'build'

@@ -29,6 +29,7 @@ import {
   Zap,
 } from 'lucide-react'
 import { cn } from '../lib/utils'
+import { TeamGem } from './pixel-badges'
 
 /**
  * The badges beside a name, drawn exactly as kryo.to draws them.
@@ -119,7 +120,13 @@ function toneClass(tone: string): string {
 /** One badge, as kryo.to's `BadgeChip` draws it. */
 export function BadgeChip({ view, onOpen }: { view: BadgeView; onOpen?: (href: string) => void }) {
   const Icon = view.icon ? ICON[view.icon] : null
-  const chip = (
+  // A staff role is Kryoto's own badge: the team gem, in a pixel-cut chip (as on kryo.to).
+  const chip = view.kind === 'staff' ? (
+    <span title={view.title} className={cn(BADGE_BASE, 'kryo-staff-chip relative', toneClass(view.tone))}>
+      <TeamGem decorative className={cn('text-[11px]', view.tone === 'staff:owner' ? 'text-current' : 'text-primary')} />
+      {view.label}
+    </span>
+  ) : (
     <span title={view.title} className={cn(view.custom ? BADGE_BASE_CUSTOM : BADGE_BASE, 'relative', toneClass(view.tone))}>
       {Icon ? <Icon className={cn('size-3 shrink-0', view.fill && 'fill-current')} aria-hidden /> : null}
       {view.label}

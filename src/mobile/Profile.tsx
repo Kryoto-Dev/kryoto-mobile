@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
+import { ProfileLink, TeamName } from '@/mobile/identity'
 import { Check, ChevronRight, Copy, ExternalLink, MapPin, QrCode } from 'lucide-react'
 import { Button, Caption } from '@/ui'
 import { cn } from '@/lib/utils'
@@ -223,26 +224,27 @@ export function Profile() {
             className="absolute -bottom-10 left-4 z-10 size-20 overflow-hidden rounded-full border-4 border-background bg-card"
             style={view.accent ? { boxShadow: `0 0 0 2px ${view.accent}, 0 8px 24px -4px ${view.accent}40` } : undefined}
           >
-            {view.avatar ? (
+            <ProfileLink username={account?.username} className="block size-full focus-visible:outline-2 focus-visible:outline-primary">{view.avatar ? (
               <img src={view.avatar} alt="" className="size-full object-cover" />
             ) : (
               <span className="grid size-full place-items-center text-2xl font-bold text-foreground">{view.name.slice(0, 1).toUpperCase()}</span>
-            )}
+            )}</ProfileLink>
           </div>
         </div>
       ) : null}
       <div className={cn('grid gap-6 px-4 pb-8', account ? 'pt-14' : 'pt-5')}>
         <LinkRow label="Notifications & updates" onClick={() => push({ kind: 'notifications' })} />
+        {me?.features?.friends ? <LinkRow label="Friends" onClick={() => push({ kind: 'friends' })} /> : null}
         {account && view ? (
           <div className="grid gap-2">
             <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
-              <h1 className="min-w-0 break-words text-2xl font-bold leading-tight text-foreground">{view.name}</h1>
+              <h1 className="min-w-0 break-words text-2xl font-bold leading-tight text-foreground"><ProfileLink username={account.username} className="hover:underline focus-visible:outline-2 focus-visible:outline-primary"><TeamName username={account.username}>{view.name}</TeamName></ProfileLink></h1>
               <div className="flex flex-wrap items-center gap-1.5">
                 <Badges badges={view.badges} onOpen={(href) => open(`${API}${href}`)} />
               </div>
             </div>
             <Caption>
-              @{account.username}
+              <ProfileLink username={account.username} className="hover:underline focus-visible:outline-2 focus-visible:outline-primary"><TeamName username={account.username}>@{account.username}</TeamName></ProfileLink>
               {joinedText ? ` · Joined ${joinedText}` : ''}
             </Caption>
             {view.status ? (
@@ -287,14 +289,14 @@ export function Profile() {
           </div>
         ) : ident ? (
           <div className="flex items-center gap-4">
-            {ident.avatar ? (
+            <ProfileLink username={ident.username} className="shrink-0 focus-visible:outline-2 focus-visible:outline-primary">{ident.avatar ? (
               <img src={ident.avatar} alt="" className="size-16 shrink-0 rounded-full border border-border object-cover" />
             ) : (
               <span className="grid size-16 shrink-0 place-items-center rounded-full border border-border bg-card text-xl font-bold text-foreground">{ident.name.slice(0, 1).toUpperCase()}</span>
-            )}
+            )}</ProfileLink>
             <div className="grid min-w-0 gap-0.5">
-              <span className="truncate text-base font-bold text-foreground">{ident.name}</span>
-              {ident.username ? <Caption>@{ident.username}</Caption> : null}
+              <ProfileLink username={ident.username} className="truncate text-base font-bold text-foreground hover:underline focus-visible:outline-2 focus-visible:outline-primary"><TeamName username={ident.username}>{ident.name}</TeamName></ProfileLink>
+              {ident.username ? <Caption><ProfileLink username={ident.username} className="hover:underline focus-visible:outline-2 focus-visible:outline-primary"><TeamName username={ident.username}>@{ident.username}</TeamName></ProfileLink></Caption> : null}
               <div className="flex flex-wrap items-center gap-2 pt-1">
                 {ident.supporter ? <span className="kryo-pill border border-primary/60 px-2.5 py-0.5 text-[10px] uppercase tracking-wider text-primary">Supporter</span> : null}
                 {ident.kryos != null ? <Caption>{ident.kryos.toLocaleString()} Kryos</Caption> : null}

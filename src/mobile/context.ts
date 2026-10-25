@@ -3,8 +3,8 @@ import type { Me } from '@/mobile/auth'
 import type { LibraryLink } from '@/mobile/link'
 import type { Links } from '@/mobile/storage'
 
-/** Where a push goes: a catalog game, a game on the PC, the pairing screen, or approving another device's sign-in. */
-export type Page = { kind: 'game'; slug: string } | { kind: 'lib'; id: string } | { kind: 'connect' } | { kind: 'notifications' } | { kind: 'approve'; code: string }
+/** Where a push goes: a catalog game, a game on the PC, the pairing screen, friends, chats, or approving another device's sign-in. */
+export type Page = { kind: 'game'; slug: string } | { kind: 'lib'; id: string } | { kind: 'connect' } | { kind: 'notifications' } | { kind: 'friends' } | { kind: 'chats' } | { kind: 'approve'; code: string }
 
 export interface AppContext {
   token: string | null

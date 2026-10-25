@@ -11,6 +11,7 @@ import { useApp } from '@/mobile/context'
 import { ago } from '@/mobile/format'
 import { Comments, Description, Information, LaunchOptions, Requirements, Reviews, TestedBlock } from '@/mobile/game-sections'
 import { Busy, Notice, PageHeader, Poster, Sheet, SheetRow, Strip } from '@/mobile/parts'
+import { VerifiedShield } from '@/mobile/pixel-badges'
 
 /** A related game as a Browse card. */
 function toCard(g: GameFull): CatalogCard {
@@ -136,7 +137,12 @@ export function GamePage({ slug }: { slug: string }) {
               <h2 className="text-2xl font-bold leading-tight tracking-tight text-foreground">{g.title}</h2>
               <Caption>{[g.developer, g.year].filter(Boolean).join(' - ') || 'Unknown developer'}</Caption>
               <div className="flex flex-wrap gap-1.5">
-                {g.verification === 'verified' ? <span className="kryo-pill border border-success/50 px-2.5 py-1 text-[10px] uppercase tracking-wider text-success">Verified</span> : null}
+                {g.verification === 'verified' ? (
+                  <span className="kryo-pill inline-flex items-center gap-1.5 border border-success/50 px-2.5 py-1 text-[10px] uppercase tracking-wider text-success">
+                    <VerifiedShield className="text-[12px]" />
+                    Verified
+                  </span>
+                ) : null}
                 {controller ? <span className="kryo-pill border border-border px-2.5 py-1 text-[10px] uppercase tracking-wider text-muted-foreground">{/full/i.test(controller) ? 'Full controller' : 'Controller'}</span> : null}
               </div>
               {credit(g.submitted_by_name) || credit(g.reviewed_by_name) ? (

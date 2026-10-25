@@ -1,4 +1,5 @@
 import { useEffect, useState, type ReactNode } from 'react'
+import { ProfileLink, TeamName } from '@/mobile/identity'
 import { AsciiBar, Button, Caption, Label } from '@/ui'
 import { cn } from '@/lib/utils'
 import { comments as loadComments, postComment, tested as loadTested, type Comment, type GameFull, type Tested } from '@/mobile/catalog'
@@ -6,6 +7,7 @@ import { useApp } from '@/mobile/context'
 import { siteUrl } from '@/mobile/auth'
 import { ago, requirementLines, reviewVerdict } from '@/mobile/format'
 import { Busy } from '@/mobile/parts'
+import { VerifiedShield } from '@/mobile/pixel-badges'
 
 /** A titled card on the game page. */
 export function Block({ title, children }: { title: string; children: ReactNode }) {
@@ -95,7 +97,8 @@ export function TestedBlock({ game }: { game: GameFull }) {
               : 'Nobody has confirmed this build runs yet.')}
       </p>
       <div className="flex flex-wrap gap-1.5">
-        <span className={cn('kryo-pill border px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider', verified ? 'border-success/50 text-success' : 'border-border text-muted-foreground')}>
+        <span className={cn('kryo-pill inline-flex items-center gap-1.5 border px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider', verified ? 'border-success/50 text-success' : 'border-border text-muted-foreground')}>
+          {verified ? <VerifiedShield className="text-[12px]" /> : null}
           {verified ? 'Verified' : game.verification === 'broken' ? 'Broken' : 'Unverified'}
         </span>
         {reviewer ? <span className="kryo-pill border border-border px-2.5 py-1 text-[10px] uppercase tracking-wider text-muted-foreground">Reviewed by {reviewer}</span> : null}
@@ -204,18 +207,19 @@ export function Requirements({ game }: { game: GameFull }) {
 }
 
 function CommentItem({ comment, depth, onReply }: { comment: Comment; depth: number; onReply: (c: Comment) => void }) {
-  const name = comment.author.displayName || comment.author.username
+  const name = comment.deleted ? '[removed]' : comment.author.displayName || comment.author.username
+  const username = comment.deleted ? null : comment.author.username || null
   return (
     <li className={cn('grid gap-2', depth > 0 && 'ml-4 border-l border-border pl-3')}>
       <div className="flex gap-2.5">
-        {siteUrl(comment.author.avatarUrl) ? (
+        <ProfileLink username={username} className="shrink-0 focus-visible:outline-2 focus-visible:outline-primary">{!comment.deleted && siteUrl(comment.author.avatarUrl) ? (
           <img src={siteUrl(comment.author.avatarUrl)!} alt="" className="size-8 shrink-0 rounded-full border border-border object-cover" />
         ) : (
           <span className="grid size-8 shrink-0 place-items-center rounded-full border border-border bg-secondary text-[11px] font-bold text-foreground">{name.slice(0, 1).toUpperCase()}</span>
-        )}
+        )}</ProfileLink>
         <div className="grid min-w-0 gap-0.5">
           <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
-            <span className="text-xs font-bold text-foreground">{name}</span>
+            <ProfileLink username={username} className="text-xs font-bold text-foreground hover:underline focus-visible:outline-2 focus-visible:outline-primary"><TeamName username={username}>{name}</TeamName></ProfileLink>
             {comment.author.tier ? <span className="kryo-pill border border-primary/60 px-1.5 text-[9px] uppercase tracking-wider text-primary">{comment.author.tier}</span> : null}
             <Caption>{ago(comment.createdAt)}</Caption>
             {comment.edited ? <Caption>edited</Caption> : null}
@@ -290,7 +294,7 @@ export function Comments({ slug }: { slug: string }) {
         <div className="grid gap-2 border-t border-border pt-3">
           {replyTo ? (
             <div className="flex items-center justify-between gap-2 text-[11px] text-muted-foreground">
-              <span className="truncate">Replying to {replyTo.author.displayName || replyTo.author.username}</span>
+              <span className="truncate">Replying to <ProfileLink username={replyTo.author.username || null} className="hover:underline focus-visible:outline-2 focus-visible:outline-primary"><TeamName username={replyTo.author.username || null}>{replyTo.author.displayName || replyTo.author.username}</TeamName></ProfileLink></span>
               <button type="button" onClick={() => setReplyTo(null)} className="shrink-0 uppercase tracking-wider">
                 Cancel
               </button>

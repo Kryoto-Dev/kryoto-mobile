@@ -1,3 +1,4 @@
+import { ProfileLink, TeamName } from '@/mobile/identity'
 import { useEffect, useState } from 'react'
 import { MonitorSmartphone } from 'lucide-react'
 import { Button, Caption } from '@/ui'
@@ -81,7 +82,7 @@ export function ApprovePage({ code }: { code: string }) {
               </dl>
             </section>
             <p className="text-xs leading-relaxed text-muted-foreground">
-              Approving signs that device in as <span className="font-bold text-foreground">{name}</span>. Only approve a code you asked for yourself, on a screen you are looking at.
+              Approving signs that device in as <ProfileLink username={me?.username} className="font-bold text-foreground hover:underline focus-visible:outline-2 focus-visible:outline-primary"><TeamName username={me?.username}>{name}</TeamName></ProfileLink>. Only approve a code you asked for yourself, on a screen you are looking at.
             </p>
             <div className="grid grid-cols-2 gap-2">
               <Button size="lg" variant="danger" disabled={busy} onClick={() => void decide('deny')}>

@@ -28,6 +28,8 @@ export type Me = {
   isSupporter: boolean
   isTester?: boolean
   kryos?: { balance?: number } | null
+  /** Dark-launched features this account sees (kryo.to feature flags), e.g. `friends`. */
+  features?: Partial<Record<string, boolean>> | null
 }
 
 /**

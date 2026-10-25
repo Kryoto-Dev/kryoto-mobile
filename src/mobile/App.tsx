@@ -26,6 +26,8 @@ import { applyLook } from '@/mobile/look'
 import { store, type Links } from '@/mobile/storage'
 import { Store } from '@/mobile/Store'
 import { NotificationsPage, UpdatePrompt } from '@/mobile/Notifications'
+import { FriendsPage } from '@/mobile/Friends'
+import { ChatProvider, ChatsPage } from '@/mobile/Chat'
 import { useMobileNotifications } from '@/mobile/platform'
 
 type Phase = 'splash' | 'welcome' | 'main'
@@ -201,6 +203,8 @@ export function App() {
   const page = stack[stack.length - 1]
   return (
     <AppContextProvider.Provider value={context}>
+      {/* Chat's one frame lives beside the pages, so it keeps running as you move between them. */}
+      <ChatProvider>
       <main className="relative h-full overflow-hidden bg-background text-foreground">
         {phase !== 'main' ? (
           // One element for the opening and Welcome, so the K// the opening
@@ -240,6 +244,10 @@ export function App() {
                   <ApprovePage code={page.code} />
                 ) : page.kind === 'notifications' ? (
                   <NotificationsPage />
+                ) : page.kind === 'friends' ? (
+                  <FriendsPage />
+                ) : page.kind === 'chats' ? (
+                  <ChatsPage />
                 ) : (
                   <ConnectPage />
                 )}
@@ -289,6 +297,7 @@ export function App() {
         <Toast message={message} />
         {phase === 'main' ? <UpdatePrompt /> : null}
       </main>
+      </ChatProvider>
     </AppContextProvider.Provider>
   )
 }

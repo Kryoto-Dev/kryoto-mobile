@@ -127,6 +127,25 @@ object MobileNotifications {
         } finally { conn.disconnect() }
     }
 
+    /** Tell kryo.to these were shown here, so Kryoto Desktop does not show them again. Best effort. */
+    private fun markShown(cfg: JSONObject, token: String, ids: List<String>) {
+        if (ids.isEmpty()) return
+        val uri = URI("${site(cfg)}/api/notifications")
+        val conn = uri.toURL().openConnection() as HttpURLConnection
+        try {
+            conn.instanceFollowRedirects = false
+            conn.connectTimeout = 3_000
+            conn.readTimeout = 8_000
+            conn.requestMethod = "POST"
+            conn.doOutput = true
+            conn.setRequestProperty("Authorization", "Bearer $token")
+            conn.setRequestProperty("Content-Type", "application/json")
+            conn.outputStream.use { it.write(JSONObject().put("shown", org.json.JSONArray(ids)).toString().toByteArray()) }
+            conn.responseCode
+        } catch (_: Exception) {
+        } finally { conn.disconnect() }
+    }
+
     fun snapshot(c: Context, cfg: JSONObject = config(c)): JSONObject? {
         val lan = cfg.optJSONObject("lan")
         if (lan != null) {
@@ -155,6 +174,7 @@ object MobileNotifications {
         if (config(c).optString("token") != token) return
         val saved = prefs(c).getStringSet("accountSeen", null)
         val seen = saved?.toMutableSet() ?: mutableSetOf()
+        val shownHere = mutableListOf<String>()
         for (i in list.length() - 1 downTo 0) {
             val n = list.optJSONObject(i) ?: continue
             val id = n.optString("id")
@@ -168,12 +188,15 @@ object MobileNotifications {
             }
             val created = try { java.text.SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'", java.util.Locale.US).apply { timeZone = java.util.TimeZone.getTimeZone("UTC"); isLenient = false }.parse(n.optString("createdAt"))?.time ?: 0L } catch (_: Exception) { 0L }
             val since = maxOf(prefs(c).getLong("accountSince", Long.MAX_VALUE), prefs(c).getLong("since_$group", 0))
-            if (id !in seen && created >= since && n.isNull("readAt") && group != null && enabled(c, group)) {
+            // Not when another device showed it already (a browser push, Kryoto Desktop).
+            if (id !in seen && created >= since && n.isNull("readAt") && !n.optBoolean("shown") && group != null && enabled(c, group)) {
                 show(c, group, "account:$id", n.optString("title"), n.optString("body"), "notifications")
+                shownHere.add(id)
             }
             seen.add(id)
         }
         prefs(c).edit().putStringSet("accountSeen", seen.toList().takeLast(300).toSet()).apply()
+        markShown(cfg, token, shownHere)
         }
     }
 }

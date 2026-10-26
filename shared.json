@@ -1,6 +1,6 @@
 {
   "source": "https://github.com/Kryoto-Dev/kryoto-desktop.git",
-  "ref": "01bd647c3ac8cf0fc3c16357090e9cc705d2a31f",
+  "ref": "5f9152da198bae4046e55795c216252a9cf3848f",
   "worktree": [],
   "paths": [
     "env.d.ts",
@@ -30,7 +30,7 @@
   "hashes": {
     "env.d.ts": "32949946d8f0d36d3ebf563ceb53ac873326dbb5cea961da871a0802cceeced2",
     "boot/SplashScene.tsx": "3622f4bbbb7e400051690b837fd53addbafacb1f4203831af4d1a55bc3a6fd39",
-    "hooks/useInbox.ts": "03148844ba227dbf6f453fbd503d783c2af5fc5f34819aaf44f0accb75d0cfd2",
+    "hooks/useInbox.ts": "99163556059671f50c58ff2e669ddf918947159528a4d2ccdc47aaf83d9984c2",
     "hooks/useSaved.ts": "b5d8167a992fa4a5ea917af66831750df6101010cad1feb4ed0f6954902266a6",
     "lib/bridge.ts": "fd17fffb93a22b1bdc015ffac7007538e3b4c7e9d4e2c90e2dd6a9a1f72b2c19",
     "lib/downloads.ts": "7f14fe8451366132ef1ed9e378ba73c7ef906ae4dcd912326036e490cb8e7764",
@@ -42,7 +42,7 @@
     "lib/notify.ts": "14d0be73422f98f3fbee8ca9ac84907e033fe2a6c9b341d0847422a783908693",
     "lib/play-reports.ts": "67480e147d4bb8c5414c749b5e0ded96b052485aa5353211b80b718a5d05e7e7",
     "lib/popup.ts": "9b3f01c5f3eead04983f8ed814563c087c81acb5a044aa2b39fb822934eb33f8",
-    "lib/settings.ts": "9dbc685b1a993199c67b56d25e4310f98c295b35338860cdf60b69739b2928c0",
+    "lib/settings.ts": "a6dbc4861809f51230aadbc39b8cfb43a8d0cef3f719b062b8df43bb167ad289",
     "lib/utils.ts": "e46429536f43f5910f5b2b0c50bb2769b510a4558bb4b5d20a3b0a9091dbf7c3",
     "ui/Busy.tsx": "27a2bb4de753d7c34fde00daec2da7e92c523add5174a7d5d4739b7ea8950fcc",
     "ui/Matrix.tsx": "845c2c53ccf6ca4ef3947ead1b70a2a585a29522dfe41790969bd356d1febba8",

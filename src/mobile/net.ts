@@ -12,6 +12,8 @@ export class ApiError extends Error {
   constructor(
     message: string,
     public status: number,
+    /** The server's answer, when it sent one. */
+    public data?: unknown,
   ) {
     super(message)
   }
@@ -63,7 +65,7 @@ export async function request<T = Record<string, unknown>>(url: string, { method
   }
   if (status < 200 || status >= 300) {
     const error = json && typeof json === 'object' && 'error' in json ? json.error : null
-    throw new ApiError(typeof error === 'string' && error ? error : `${hostOf(url)} answered ${status}.`, status)
+    throw new ApiError(typeof error === 'string' && error ? error : `${hostOf(url)} answered ${status}.`, status, json)
   }
   return { status, json: json as T }
 }

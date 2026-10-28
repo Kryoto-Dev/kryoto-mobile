@@ -7,7 +7,8 @@ import { formatLastPlayed, formatPlaytime } from '@/lib/format'
 import { game as loadGame } from '@/mobile/catalog'
 import { useApp } from '@/mobile/context'
 import { API, openExternal } from '@/mobile/auth'
-import { accountMachines, atLeast, pairFromQr, pairLan, PHONE_SERVER_VERSION, type AccountMachine } from '@/mobile/link'
+import { accountMachines, atLeast, pairFromQr, pairLan, PHONE_SERVER_VERSION, RemoteOff, type AccountMachine } from '@/mobile/link'
+import { RemoteConsentCard } from '@/mobile/remote'
 import { Busy, Notice, PageHeader, Poster, Sheet, SheetRow, TopInset } from '@/mobile/parts'
 import { Downloads, openCount } from '@/mobile/Downloads'
 import { AchievementsCard } from '@/mobile/Achievements'
@@ -590,15 +591,25 @@ function MachineSheet({ machine, onClose, onScan, onType }: { machine: AccountMa
 
 /** Every machine on the account, the ones the phone cannot open marked so; tapping one of those says what to do. */
 function Machines({ token, onPick, fail }: { token: string; onPick(m: AccountMachine): void; fail(e: unknown): string }) {
+  const { remote, remoteWasOff } = useApp()
+  const on = remote?.enabled === true
   const [machines, setMachines] = useState<AccountMachine[] | null>(null)
   const [error, setError] = useState<string | null>(null)
   const load = () => {
     setError(null)
+    // Remote off (kryo.to lib/remote-consent.ts): kryo.to is not asked at all.
+    if (!on) return setMachines(null)
     accountMachines(token)
       .then(setMachines)
-      .catch((e: unknown) => setError(fail(e)))
+      .catch((e: unknown) => {
+        // Turned off on another device since: follow it.
+        if (e instanceof RemoteOff) return remoteWasOff()
+        setError(fail(e))
+      })
   }
-  useEffect(load, [token]) // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(load, [token, on]) // eslint-disable-line react-hooks/exhaustive-deps
+  if (!remote) return <Busy />
+  if (!on) return <RemoteConsentCard />
   if (error) return <Notice title="Could not list your PCs" body={error} retry={load} />
   if (!machines) return <Busy />
   if (!machines.length) return <p className="text-xs leading-relaxed text-muted-foreground">No PC on this account yet. Sign in to kryo.to in Kryoto Desktop and it shows up here.</p>

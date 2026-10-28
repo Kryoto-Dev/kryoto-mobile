@@ -9,6 +9,7 @@ import { STATUS_LABEL, STATUSES } from '@/hooks/useSaved'
 import { API, openExternal, parseSignInCode, profile as loadProfile, siteUrl, type AccountProfile } from '@/mobile/auth'
 import { savedLibrary, type SavedCounts, type SavedEntry } from '@/mobile/catalog'
 import { useApp } from '@/mobile/context'
+import { RemoteConsentCard } from '@/mobile/remote'
 import { Poster, Strip, TopInset } from '@/mobile/parts'
 import { Badges } from '@/mobile/badges'
 import { ScanCancelled, scanQr } from '@/mobile/scan'
@@ -453,6 +454,11 @@ export function Profile() {
                 </Button>
               </>
             )}
+            {signedIn ? (
+              <div className="border-t border-border pt-3">
+                <RemoteConsentCard compact />
+              </div>
+            ) : null}
           </div>
         </Section>
 

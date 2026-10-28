@@ -1,5 +1,5 @@
 import { createContext, useContext } from 'react'
-import type { Me } from '@/mobile/auth'
+import type { Me, RemoteConsent } from '@/mobile/auth'
 import type { LibraryLink } from '@/mobile/link'
 import type { Links } from '@/mobile/storage'
 
@@ -23,6 +23,12 @@ export interface AppContext {
   signOut(): void
   /** An error's text for the player; a 401 from kryo.to also signs out. */
   fail(error: unknown): string
+  /** Remote for the signed-in account; null while unknown or signed out (off). */
+  remote: RemoteConsent | null
+  /** Turn Remote on or off for the account, on an explicit tap. */
+  setRemote(enabled: boolean): Promise<void>
+  /** kryo.to said Remote is off: follow it here, without saving anything. */
+  remoteWasOff(): void
 }
 
 export const App = createContext<AppContext | null>(null)

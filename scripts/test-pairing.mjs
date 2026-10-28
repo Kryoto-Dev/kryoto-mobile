@@ -8,7 +8,7 @@ try {
   const page = await browser.newPage()
   await page.goto('http://localhost:1423/mobile.html')
   const results = await page.evaluate(async () => {
-    const { parsePairingUri, pairFromQr, pairLan, isLanHost } = await import('/src/mobile/link.ts')
+    const { parsePairingUri, pairFromQr, pairLan, isLanHost, accountMachines, isRemoteOff, RemoteOff } = await import('/src/mobile/link.ts')
     const cases = []
     const check = (name, ok) => { if (!ok) throw new Error(name); cases.push(name) }
     check('only valid private IPv4 and ports', isLanHost('192.168.1.5:47821') && !isLanHost('192.168.999.5:47821') && !isLanHost('8.8.8.8:80') && !isLanHost('192.168.1.5:65536'))
@@ -21,12 +21,14 @@ try {
       url = String(url)
       calls.push({ url, method: opts.method ?? 'GET', headers: opts.headers })
       const reply = (status, data) => new Response(JSON.stringify(data), { status })
+      // Remote off for the account (kryo.to lib/remote-consent.ts): kryo.to refuses.
+      if (mode.startsWith('remote-off') && url.includes('/api/')) return reply(403, { error: 'Remote is off for this account.', remote: false })
       if (url.includes('/api/forge/agents')) return reply(200, { agents: [] })
       if (url.includes('/api/desktop/remote')) return reply(200, { devices: [{ installId: mode === 'wrong-account' ? 'other-desktop' : 'desktop-1234', name: 'Test PC', protocol: mode === 'old-relay' ? 2 : 3, online: true }] })
       if (url.includes('/v1/info')) {
         if (mode === 'legacy') return reply(404, {})
         if (mode === 'wrong-id') return reply(200, { protocol: 1, installId: 'other-desktop' })
-        if (url.includes('192.168.1.5') && !['relay', 'wrong-account', 'old-relay'].includes(mode)) return reply(200, { protocol: 1, installId: 'desktop-1234' })
+        if (url.includes('192.168.1.5') && !['relay', 'remote-off-away', 'wrong-account', 'old-relay'].includes(mode)) return reply(200, { protocol: 1, installId: 'desktop-1234' })
         return new Promise((_, reject) => opts.signal.addEventListener('abort', () => reject(new Error('timeout')), { once: true }))
       }
       if (url.includes('/v1/snapshot')) return reply(401, { error: 'Pair this phone again.' })
@@ -58,6 +60,15 @@ try {
       try { await pairFromQr(qr, invalid === 'wrong-id' ? null : 'account-test-token') } catch (e) { error = e.message }
       check(`reject ${invalid} without consuming pairing code`, error.includes('Could not reach') && !calls.some((c) => c.method === 'POST'))
     }
+    mode = 'remote-off'; calls = []
+    result = await pairFromQr(qr, 'account-test-token')
+    check('Remote off: Wi-Fi pairing still works, with no kryo.to link', !!result.lan && !result.relay)
+    mode = 'remote-off-away'; calls = []; error = ''
+    try { await pairFromQr(qr, 'account-test-token') } catch (e) { error = e.message }
+    check('Remote off: away from the PC there is no way through kryo.to', error.includes('Could not reach') && !calls.some((c) => c.method === 'POST'))
+    error = null
+    try { await accountMachines('account-test-token') } catch (e) { error = e }
+    check('Remote off: the account PC list says so', error instanceof RemoteOff && isRemoteOff(error))
     mode = 'incomplete'; error = ''
     try { await pairLan('192.168.1.5:47821', '123456') } catch (e) { error = e.message }
     check('reject incomplete pairing replies', error.includes('incomplete'))
@@ -66,6 +77,6 @@ try {
     check('manual entry validates before networking', error.includes('private address') && calls.length === 0)
     return cases
   })
-  assert.ok(results.length >= 14)
+  assert.ok(results.length >= 17)
   for (const result of results) console.log(`PASS ${result}`)
 } finally { await browser.close() }

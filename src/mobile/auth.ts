@@ -30,7 +30,12 @@ export type Me = {
   kryos?: { balance?: number } | null
   /** Dark-launched features this account sees (kryo.to feature flags), e.g. `friends`. */
   features?: Partial<Record<string, boolean>> | null
+  /** Whether Remote is on for the account (kryo.to lib/remote-consent.ts). Missing is off. */
+  remote?: RemoteConsent | null
 }
+
+/** Remote, away from home: the account's own answer, the same in every Kryoto app. */
+export type RemoteConsent = { enabled: boolean; decided: boolean; enabledAt?: string | null }
 
 /**
  * As "mobile", so the approval screen says Kryoto Mobile; as "desktop" when the

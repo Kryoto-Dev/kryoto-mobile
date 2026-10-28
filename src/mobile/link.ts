@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { API } from '@/mobile/auth'
+import { API, type RemoteConsent } from '@/mobile/auth'
 import { ApiError, request } from '@/mobile/net'
 import { store, type LanLink, type Links } from '@/mobile/storage'
 import type { PhoneAchievements, PhoneDownload, PhoneGame, PhoneSnapshot } from '@/mobile/types'
@@ -104,6 +104,36 @@ export class RelayUnsupported extends Error {
   }
 }
 
+/**
+ * kryo.to refused because Remote is off for the account (kryo.to
+ * lib/remote-consent.ts). Remote is opt-in: off, the phone reaches a PC only
+ * on its Wi-Fi, and nothing goes through kryo.to.
+ */
+export class RemoteOff extends Error {
+  constructor() {
+    super('Remote is off for your account. Turn it on to reach your PC away from home.')
+  }
+}
+
+export function isRemoteOff(e: unknown): boolean {
+  if (e instanceof RemoteOff) return true
+  if (!(e instanceof ApiError) || e.status !== 403) return false
+  const data = e.data
+  return !!data && typeof data === 'object' && (data as { remote?: unknown }).remote === false
+}
+
+/** Whether Remote is on for the account. A failed read is off. */
+export async function remoteConsent(token: string): Promise<RemoteConsent> {
+  const { json } = await request<{ remote?: RemoteConsent }>(`${API}/api/account/remote`, { token, timeoutMs: 5_000 })
+  return json.remote && typeof json.remote.enabled === 'boolean' ? json.remote : { enabled: false, decided: false }
+}
+
+/** Turn Remote on or off for the account: only from an explicit choice on screen. */
+export async function setRemoteConsent(token: string, enabled: boolean): Promise<RemoteConsent> {
+  const { json } = await request<{ remote?: RemoteConsent }>(`${API}/api/account/remote`, { method: 'POST', token, body: { enabled } })
+  return json.remote ?? { enabled, decided: true }
+}
+
 const relayReady = (d: RemoteDevice) => (d.protocol ?? 1) >= PHONE_RELAY_PROTOCOL
 
 /** Is `version` at least `min`? Plain x.y.z; anything unreadable counts as old. */
@@ -123,7 +153,11 @@ export function atLeast(version: string, min: string): boolean {
  */
 export async function accountMachines(token: string): Promise<AccountMachine[]> {
   const [desktops, forge] = await Promise.all([
-    request<{ devices?: RemoteDevice[] }>(`${API}/api/desktop/remote`, { token, timeoutMs: 5_000 }).then((r) => r.json.devices ?? []),
+    request<{ devices?: RemoteDevice[] }>(`${API}/api/desktop/remote`, { token, timeoutMs: 5_000 })
+      .then((r) => r.json.devices ?? [])
+      .catch((e: unknown) => {
+        throw isRemoteOff(e) ? new RemoteOff() : e
+      }),
     request<{ agents?: ForgeAgent[] }>(`${API}/api/forge/agents`, { token, timeoutMs: 5_000 })
       .then((r) => r.json.agents ?? [])
       .catch(() => [] as ForgeAgent[]),
@@ -304,6 +338,8 @@ export function useLibraryLink(
   onUnauthorized: () => void,
   /** The PC picked through kryo.to turned out not to support it: drop that link. */
   onRelayUnsupported: () => void,
+  /** kryo.to said Remote is off for the account: stop going through it. */
+  onRemoteOff?: () => void,
 ): LibraryLink {
   const [snapshot, setSnapshot] = useState<PhoneSnapshot | null>(() => kept(links))
   const [state, setState] = useState<LinkState>(links.lan || (links.relay && token) ? 'offline' : 'unlinked')
@@ -338,6 +374,7 @@ export function useLibraryLink(
     let persisted = 0
     let moving = false
     let followUntil = 0
+    let relayOff = false
 
     const fetchOnce = async (): Promise<{ got: Fetched; by: 'lan' | 'relay' } | null> => {
       const now = Date.now()
@@ -354,13 +391,18 @@ export function useLibraryLink(
           if (e instanceof ApiError && e.status === 401) toast('This PC no longer knows this phone. Pair again.')
         }
       }
-      if (relayLinkNow && (!lanLinkNow || lanFails >= 1)) {
+      if (relayLinkNow && !relayOff && (!lanLinkNow || lanFails >= 1)) {
         relayMode = true
         try {
           return { got: await relayLinkNow.snapshot(), by: 'relay' }
         } catch (e) {
           // kryo.to no longer accepts this sign-in.
           if (e instanceof ApiError && e.status === 401) onUnauthorized()
+          // Remote turned off (here or on another device): no more asking kryo.to.
+          if (isRemoteOff(e)) {
+            relayOff = true
+            onRemoteOff?.()
+          }
           // Picked in an older version, which offered every PC on the account.
           if (e instanceof RelayUnsupported) {
             toast(e.message)
@@ -439,6 +481,14 @@ export function useLibraryLink(
     })
   }, [snapshot])
 
+  const offRef = useRef(onRemoteOff)
+  offRef.current = onRemoteOff
+  /** A refused command: Remote off means the whole app follows. */
+  const refused = useCallback((e: unknown, fallback: string) => {
+    if (isRemoteOff(e)) offRef.current?.()
+    toast(e instanceof Error ? e.message : fallback)
+  }, [toast])
+
   const active = useCallback((): Link | null => {
     if (via.current === 'relay' && token && relayId) return relayLink(token, relayId)
     if (lan) return lanLink(lan)
@@ -455,13 +505,13 @@ export function useLibraryLink(
         await link.play(id)
       } catch (e) {
         setStarting((cur) => new Set([...cur].filter((x) => x !== id)))
-        toast(e instanceof Error ? e.message : 'Could not start the game.')
+        refused(e, 'Could not start the game.')
         return
       }
       window.setTimeout(() => setStarting((cur) => new Set([...cur].filter((x) => x !== id))), wait)
       refresh.current()
     },
-    [active, toast],
+    [active, toast, refused],
   )
 
   const stop = useCallback(
@@ -469,11 +519,11 @@ export function useLibraryLink(
       try {
         await active()?.stop(id)
       } catch (e) {
-        toast(e instanceof Error ? e.message : 'Could not stop the game.')
+        refused(e, 'Could not stop the game.')
       }
       refresh.current()
     },
-    [active, toast],
+    [active, toast, refused],
   )
 
   const download = useCallback(
@@ -498,13 +548,13 @@ export function useLibraryLink(
         }
         await link.download(slug, token)
       } catch (e) {
-        toast(e instanceof Error ? e.message : 'Could not send the download.')
+        refused(e, 'Could not send the download.')
         return false
       }
       toast('Download sent to computer.')
       return true
     },
-    [active, toast],
+    [active, toast, refused],
   )
 
   const control = useCallback(
@@ -514,7 +564,7 @@ export function useLibraryLink(
       try {
         await link.control(id, action)
       } catch (e) {
-        toast(e instanceof Error ? e.message : 'The PC did not accept that.')
+        refused(e, 'The PC did not accept that.')
         refresh.current()
         return false
       }
@@ -523,7 +573,7 @@ export function useLibraryLink(
       refresh.current()
       return true
     },
-    [active, toast],
+    [active, toast, refused],
   )
 
   const removeGame = useCallback(
@@ -537,13 +587,13 @@ export function useLibraryLink(
         else if (deleteFiles) toast(`Removed ${game.title} from the library. Its files are outside Kryoto's folders, so they were left.`)
         else toast(`Removed ${game.title} from the library.`)
       } catch (e) {
-        toast(e instanceof Error ? e.message : 'The PC did not accept that.')
+        refused(e, 'The PC did not accept that.')
         return false
       }
       refresh.current()
       return true
     },
-    [active, toast],
+    [active, toast, refused],
   )
 
   const achievements = useCallback(

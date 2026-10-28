@@ -14,10 +14,11 @@ import {
   waitForToken,
   type DeviceStart,
   type Me,
+  type RemoteConsent,
 } from '@/mobile/auth'
 import { App as AppContextProvider, type AppContext, type Page } from '@/mobile/context'
 import { GamePage } from '@/mobile/GamePage'
-import { useLibraryLink } from '@/mobile/link'
+import { remoteConsent, setRemoteConsent, useLibraryLink } from '@/mobile/link'
 import { ConnectPage, Library, LibraryGamePage } from '@/mobile/Library'
 import { ApiError } from '@/mobile/net'
 import { Profile } from '@/mobile/Profile'
@@ -92,8 +93,34 @@ export function App() {
     if (cur.relay) setLinks({ ...cur, relay: undefined })
   }, [setLinks])
 
-  const link = useLibraryLink(token, links, toast, signedOut, dropRelay)
-  useMobileNotifications(token, links, link.snapshot, toast)
+  // Remote (kryo.to lib/remote-consent.ts) is the account's own answer, off
+  // until it is turned on. Off, the PC is reached on its Wi-Fi only: the
+  // kryo.to link is left out of polling and of the native notifier.
+  const [remote, setRemoteState] = useState<RemoteConsent | null>(null)
+  useEffect(() => setRemoteState(me ? (me.remote ?? { enabled: false, decided: false }) : null), [me])
+  useEffect(() => {
+    if (!token) return
+    // Back in front: it may have changed on another device.
+    const again = () => {
+      if (document.visibilityState === 'visible') void remoteConsent(token).then(setRemoteState).catch(() => {})
+    }
+    document.addEventListener('visibilitychange', again)
+    return () => document.removeEventListener('visibilitychange', again)
+  }, [token])
+  const remoteOn = !!token && remote?.enabled === true
+  const remoteOff = useCallback(() => setRemoteState((r) => ({ ...(r ?? {}), enabled: false, decided: true })), [])
+  const saveRemote = useCallback(
+    async (enabled: boolean) => {
+      if (!token) return
+      if (!enabled) remoteOff()
+      setRemoteState(await setRemoteConsent(token, enabled))
+    },
+    [token, remoteOff],
+  )
+  const liveLinks = useMemo<Links>(() => (remoteOn ? links : { lan: links.lan }), [remoteOn, links])
+
+  const link = useLibraryLink(token, liveLinks, toast, signedOut, dropRelay, remoteOff)
+  useMobileNotifications(token, liveLinks, link.snapshot, toast)
 
   // A phone linked to a PC looks like it: the palette, corners, typeface and
   // theme Kryoto Desktop is using now. The last one sent is kept for the next start.
@@ -196,8 +223,11 @@ export function App() {
         if (links.relay) setLinks({ ...links, relay: undefined })
       },
       fail,
+      remote,
+      setRemote: saveRemote,
+      remoteWasOff: remoteOff,
     }),
-    [token, me, links, setLinks, link, push, back, toast, fail, openSignIn],
+    [token, me, links, setLinks, link, push, back, toast, fail, openSignIn, remote, saveRemote, remoteOff],
   )
 
   const page = stack[stack.length - 1]

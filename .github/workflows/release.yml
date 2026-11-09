@@ -243,4 +243,4 @@ jobs:
           HOLD: ${{ vars.RELEASE_HOLD }}
         run: |
           gh release create "v$VERSION" out/*.apk --title "Kryoto Mobile v$VERSION" $( [ "$HOLD" = "1" ] && echo --draft ) \
-            --notes "Kryoto Mobile v$VERSION for Android. Faster QR pairing with account fallback, simpler connection screens, optional Android notifications and in-app updates. Pick arm64-v8a for most phones. Releases before 0.2.26 used temporary signing keys: uninstall an older build once before installing this stable release. Future stable updates install in the app. The _debug APK is for testing."
+            --notes "Kryoto Mobile $VERSION for Android. What changed is in the kryo.to changelog: https://kryo.to/changelog. Pick arm64-v8a for most phones. Releases before 0.2.26 used temporary signing keys: uninstall an older build once before installing this stable release. Future stable updates install in the app. The _debug APK is for testing."

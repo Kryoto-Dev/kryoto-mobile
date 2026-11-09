@@ -1,10 +1,10 @@
 import { ProfileLink, TeamName } from '@/mobile/identity'
 import { useEffect, useState } from 'react'
-import { MonitorSmartphone } from 'lucide-react'
+import { MonitorSmartphone } from '@/ui/pixel-icons'
 import { Button, Caption } from '@/ui'
 import { answerSignIn, groupCode, lookupSignIn, type PendingSignIn } from '@/mobile/auth'
 import { useApp } from '@/mobile/context'
-import { Busy, Notice, PageHeader } from '@/mobile/parts'
+import { Block, Busy, Note, Notice, PageHeader } from '@/mobile/parts'
 
 type State = { kind: 'loading' } | { kind: 'found'; request: PendingSignIn } | { kind: 'error'; message: string } | { kind: 'done'; decision: 'approve' | 'deny' }
 
@@ -67,7 +67,7 @@ export function ApprovePage({ code }: { code: string }) {
           </Notice>
         ) : (
           <>
-            <section className="kryo-radius grid gap-3 border border-border bg-card p-4">
+            <Block>
               <div className="flex items-center gap-3">
                 <MonitorSmartphone className="size-5 shrink-0 text-primary" />
                 <div className="grid min-w-0 gap-0.5">
@@ -80,10 +80,10 @@ export function ApprovePage({ code }: { code: string }) {
                 {state.request.requestIp ? <Row label="Asked from" value={state.request.requestIp} /> : null}
                 <Row label="Asked at" value={new Date(state.request.createdAt).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })} />
               </dl>
-            </section>
-            <p className="text-xs leading-relaxed text-muted-foreground">
-              Approving signs that device in as <ProfileLink username={me?.username} className="font-bold text-foreground hover:underline focus-visible:outline-2 focus-visible:outline-primary"><TeamName username={me?.username}>{name}</TeamName></ProfileLink>. Only approve a code you asked for yourself, on a screen you are looking at.
-            </p>
+            </Block>
+            <Note>
+              Approving signs that device in as <ProfileLink username={me?.username} className="font-bold text-foreground"><TeamName username={me?.username}>{name}</TeamName></ProfileLink>. Only approve a code you asked for yourself, on a screen you are looking at.
+            </Note>
             <div className="grid grid-cols-2 gap-2">
               <Button size="lg" variant="danger" disabled={busy} onClick={() => void decide('deny')}>
                 Refuse

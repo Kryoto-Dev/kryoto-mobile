@@ -1,9 +1,9 @@
 import { useEffect, useRef, useState } from 'react'
-import { Lock, Trophy } from 'lucide-react'
-import { AsciiBar, Button, Caption } from '@/ui'
+import { Lock, Trophy } from '@/ui/pixel-icons'
+import { AsciiBar, Button } from '@/ui'
 import { cn } from '@/lib/utils'
 import { useApp } from '@/mobile/context'
-import { Busy } from '@/mobile/parts'
+import { Block, Busy, Note } from '@/mobile/parts'
 import type { PhoneAchievement, PhoneAchievements } from '@/mobile/types'
 
 const SHOWN = 12
@@ -33,20 +33,14 @@ export function AchievementsCard({ id }: { id: string }) {
   }, [id, live])
 
   if (!live || data === null) {
-    return <p className="text-[11px] leading-relaxed text-muted-foreground">Connect to your PC on this network to see achievements.</p>
+    return <Note>Connect to your PC on this network to see achievements.</Note>
   }
   if (data === undefined) return <Busy />
   if (data.total === 0 || data.achievements.length === 0) return null
 
   const shown = all ? data.achievements : data.achievements.slice(0, SHOWN)
   return (
-    <section className="kryo-radius grid gap-3 border border-border bg-card p-4">
-      <div className="flex items-center justify-between gap-2">
-        <Caption className="font-bold text-foreground/80">Achievements</Caption>
-        <Caption className="tabular-nums">
-          {data.unlocked}/{data.total}
-        </Caption>
-      </div>
+    <Block title={`Achievements ${data.unlocked}/${data.total}`}>
       <AsciiBar fraction={data.unlocked / data.total} cells={20} showPct />
       <ul className="grid gap-3">
         {shown.map((a) => (
@@ -58,7 +52,7 @@ export function AchievementsCard({ id }: { id: string }) {
           Show all
         </Button>
       ) : null}
-    </section>
+    </Block>
   )
 }
 

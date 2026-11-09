@@ -2,9 +2,17 @@ import { createContext, useContext } from 'react'
 import type { Me, RemoteConsent } from '@/mobile/auth'
 import type { LibraryLink } from '@/mobile/link'
 import type { Links } from '@/mobile/storage'
+import type { MobileSetting } from '@/mobile/settings-links'
 
-/** Where a push goes: a catalog game, a game on the PC, the pairing screen, friends, chats, or approving another device's sign-in. */
-export type Page = { kind: 'game'; slug: string } | { kind: 'lib'; id: string } | { kind: 'connect' } | { kind: 'notifications' } | { kind: 'friends' } | { kind: 'chats' } | { kind: 'approve'; code: string }
+export type ToastOptions = {
+  /** Takes back what the toast confirms: an Undo button on it. */
+  undo?: () => unknown
+  /** The setting it names: tapping the message opens it there. */
+  setting?: MobileSetting
+}
+
+/** Where a push goes: a catalog game, a game on the PC, the pairing screen, or approving another device's sign-in. */
+export type Page = { kind: 'game'; slug: string } | { kind: 'lib'; id: string } | { kind: 'connect' } | { kind: 'notifications' } | { kind: 'approve'; code: string } | { kind: 'collections' } | { kind: 'collection'; id: string }
 
 export interface AppContext {
   token: string | null
@@ -17,7 +25,7 @@ export interface AppContext {
   link: LibraryLink
   push(page: Page): void
   back(): void
-  toast(message: string): void
+  toast(message: string, options?: ToastOptions): void
   /** Show the sign-in screen; it returns to where the player was. */
   signIn(): void
   signOut(): void

@@ -1,48 +1,31 @@
 import { useEffect, useMemo, useState } from 'react'
-import { ProfileLink, TeamName } from '@/mobile/identity'
-import { Check, ChevronRight, Copy, ExternalLink, MapPin, QrCode } from 'lucide-react'
-import { Button, Caption } from '@/ui'
+import { Avatar, ProfileLink, TeamName } from '@/mobile/identity'
+import { Check, ChevronRight, Copy, ExternalLink, MapPin, QrCode } from '@/ui/pixel-icons'
+import { Button, Caption, Section, Stat, Tag } from '@/ui'
 import { cn } from '@/lib/utils'
 import { isTauri } from '@/lib/bridge'
 import { formatPlaytime } from '@/lib/format'
-import { STATUS_LABEL, STATUSES } from '@/hooks/useSaved'
+import { STATUS_LABEL, STATUSES, isPlayStatus } from '@/hooks/useSaved'
+import { anchorId } from '@/lib/setting-anchor'
 import { API, openExternal, parseSignInCode, profile as loadProfile, siteUrl, type AccountProfile } from '@/mobile/auth'
 import { savedLibrary, type SavedCounts, type SavedEntry } from '@/mobile/catalog'
+import { AdultArtSetting, useHideAdult, withoutAdult } from '@/mobile/adult'
 import { useApp } from '@/mobile/context'
 import { RemoteConsentCard } from '@/mobile/remote'
-import { Poster, Strip, TopInset } from '@/mobile/parts'
+import { Block, Note, Poster, Strip, TopInset } from '@/mobile/parts'
 import { Badges } from '@/mobile/badges'
 import { ScanCancelled, scanQr } from '@/mobile/scan'
+import { RichText } from '@/rich/RichText'
 
-function Section({ title, children }: { title: string; children: React.ReactNode }) {
-  return (
-    <section className="m-panel grid gap-2.5">
-      <Caption className="font-bold text-foreground/80">{title}</Caption>
-      {children}
-    </section>
-  )
-}
-
-function Tile({ label, value }: { label: string; value: string | number }) {
-  return (
-    <div className="kryo-radius grid gap-1 border border-border bg-card p-3">
-      <span className="text-[10px] uppercase tracking-wider text-muted-foreground">{label}</span>
-      <span className="truncate text-sm font-bold text-foreground">{value}</span>
-    </div>
-  )
-}
-
-/** A sideways strip of game covers; `chips` puts the list each one is in over its corner. */
-function Covers({ entries, chips, onOpen }: { entries: SavedEntry[]; chips?: boolean; onOpen: (slug: string) => void }) {
+/** A sideways strip of game covers, the list each one is in over its corner. */
+function Covers({ entries, onOpen }: { entries: SavedEntry[]; onOpen: (slug: string) => void }) {
   return (
     <Strip>
       {entries.map((e) => (
         <button key={e.slug} type="button" onClick={() => onOpen(e.slug)} className="grid w-28 shrink-0 content-start gap-1.5 text-left">
           <div className="relative">
-            <Poster src={e.cover || null} title={e.title || e.slug} />
-            {chips ? (
-              <span className="kryo-pill absolute left-1.5 top-1.5 bg-background px-2 py-0.5 text-[9px] font-bold uppercase tracking-wider text-foreground">{STATUS_LABEL[e.status]}</span>
-            ) : null}
+            <Poster src={e.cover || null} title={e.title || e.slug} nsfw={e.nsfw} />
+            <span className="kryo-pill absolute left-1.5 top-1.5 bg-background px-2 py-0.5 text-[9px] font-bold uppercase tracking-wider text-foreground">{STATUS_LABEL[e.status]}</span>
           </div>
           <span className="line-clamp-2 text-xs font-bold text-foreground">{e.title || e.slug}</span>
         </button>
@@ -94,7 +77,7 @@ export function Profile() {
       .then((lib) => {
         if (!current) return
         setCounts(lib.counts)
-        setEntries(lib.entries)
+        setEntries(lib.entries.filter((e) => !lib.hidden.includes(e.slug)))
       })
       .catch((e: unknown) => current && void fail(e))
     return () => {
@@ -103,17 +86,15 @@ export function Profile() {
   }, [token, fail])
 
   const stats = useMemo(() => {
-    const games = snapshot?.games ?? []
+    const games = (snapshot?.games ?? []).filter((g) => !g.hidden)
     const played = games.filter((g) => g.playtimeSeconds > 0)
     const total = games.reduce((sum, g) => sum + g.playtimeSeconds, 0)
     const top = [...played].sort((a, b) => b.playtimeSeconds - a.playtimeSeconds).slice(0, 5)
     return { total, played: played.length, top, longest: top[0]?.playtimeSeconds ?? 0 }
   }, [snapshot])
 
-  const { playing, recent } = useMemo(() => {
-    const newest = [...entries].sort((a, b) => updatedMs(b) - updatedMs(a))
-    return { playing: newest.filter((e) => e.status === 'playing'), recent: newest.slice(0, 8) }
-  }, [entries])
+  const hideAdult = useHideAdult()
+  const recent = useMemo(() => withoutAdult([...entries], hideAdult).sort((a, b) => updatedMs(b) - updatedMs(a)).filter((e) => isPlayStatus(e.status)).slice(0, 8), [entries, hideAdult])
 
   const linked = !!(links.lan || links.relay)
   const pcName = links.lan?.name || links.relay?.name || ''
@@ -177,6 +158,10 @@ export function Profile() {
     }
   }
 
+  const copyName = (text: string) => {
+    navigator.clipboard.writeText(text).then(() => toast(`Copied ${text}`)).catch(() => {})
+  }
+
   const copyId = () => {
     if (!account?.id) return
     navigator.clipboard
@@ -191,7 +176,7 @@ export function Profile() {
 
   const cells: [string, number][] = listCounts
     ? [
-        ['Total', STATUSES.reduce((n, s) => n + (listCounts[s] ?? 0), 0)],
+        ['Total', STATUSES.reduce((n, s) => (isPlayStatus(s) ? n + (listCounts[s] ?? 0) : n), 0)],
         ['Playing', listCounts.playing ?? 0],
         ['Completed', listCounts.completed ?? 0],
         ['Plan', listCounts.plan ?? 0],
@@ -208,7 +193,7 @@ export function Profile() {
           {/* kryo.to's banner shape (3:1, what its crop editor saves), so nothing the editor promised is cut off. */}
           <div className="relative aspect-[3/1] w-full overflow-hidden border-b border-border bg-card">
             {view.banner ? (
-              <img key={view.banner} src={view.banner} alt="" draggable={false} decoding="async" className="size-full object-cover object-center" />
+              <img key={view.banner} src={view.banner} alt="" draggable={false} decoding="async" onError={(e) => { e.currentTarget.style.display = 'none' }} className="size-full object-cover object-center" />
             ) : (
               <div className="size-full bg-linear-to-br from-secondary via-muted/40 to-background" />
             )}
@@ -225,42 +210,38 @@ export function Profile() {
             className="absolute -bottom-10 left-4 z-10 size-20 overflow-hidden rounded-full border-4 border-background bg-card"
             style={view.accent ? { boxShadow: `0 0 0 2px ${view.accent}, 0 8px 24px -4px ${view.accent}40` } : undefined}
           >
-            <ProfileLink username={account?.username} className="block size-full focus-visible:outline-2 focus-visible:outline-primary">{view.avatar ? (
-              <img src={view.avatar} alt="" className="size-full object-cover" />
-            ) : (
-              <span className="grid size-full place-items-center text-2xl font-bold text-foreground">{view.name.slice(0, 1).toUpperCase()}</span>
-            )}</ProfileLink>
+            <ProfileLink username={account?.username} className="block size-full">
+              <Avatar src={view.avatar} name={view.name} className="size-full border-0 text-2xl" />
+            </ProfileLink>
           </div>
         </div>
       ) : null}
       <div className={cn('grid gap-6 px-4 pb-8', account ? 'pt-14' : 'pt-5')}>
-        <LinkRow label="Notifications & updates" onClick={() => push({ kind: 'notifications' })} />
-        {me?.features?.friends ? <LinkRow label="Friends" onClick={() => push({ kind: 'friends' })} /> : null}
         {account && view ? (
           <div className="grid gap-2">
             <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
-              <h1 className="min-w-0 break-words text-2xl font-bold leading-tight text-foreground"><ProfileLink username={account.username} className="hover:underline focus-visible:outline-2 focus-visible:outline-primary"><TeamName username={account.username}>{view.name}</TeamName></ProfileLink></h1>
+              <h1 className="min-w-0 break-words text-2xl font-bold leading-tight text-foreground"><button type="button" className="text-left" onClick={() => copyName(view.name)}><TeamName username={account.username}>{view.name}</TeamName></button></h1>
               <div className="flex flex-wrap items-center gap-1.5">
                 <Badges badges={view.badges} onOpen={(href) => open(`${API}${href}`)} />
               </div>
             </div>
             <Caption>
-              <ProfileLink username={account.username} className="hover:underline focus-visible:outline-2 focus-visible:outline-primary"><TeamName username={account.username}>@{account.username}</TeamName></ProfileLink>
+              <button type="button" onClick={() => copyName(account.username)}><TeamName username={account.username}>@{account.username}</TeamName></button>
               {joinedText ? ` · Joined ${joinedText}` : ''}
             </Caption>
             {view.status ? (
-              <p className="text-xs italic text-muted-foreground">
+              <Note className="italic">
                 {view.statusIcon ? <span className="not-italic">{view.statusIcon} </span> : null}
-                {view.status}
-              </p>
+                <RichText text={view.status} />
+              </Note>
             ) : null}
             {view.location ? (
-              <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
+              <Note className="flex items-center gap-1.5">
                 <MapPin className="size-3.5 shrink-0" aria-hidden />
                 {view.location}
-              </p>
+              </Note>
             ) : null}
-            {view.bio ? <p className="whitespace-pre-line break-words text-sm leading-relaxed text-foreground/90">{view.bio}</p> : null}
+            {view.bio ? <p className="whitespace-pre-line break-words text-sm leading-relaxed text-foreground/90"><RichText text={view.bio} /></p> : null}
             {view.links.length ? (
               <div className="flex flex-wrap gap-1.5">
                 {view.links.map((l) => (
@@ -290,65 +271,57 @@ export function Profile() {
           </div>
         ) : ident ? (
           <div className="flex items-center gap-4">
-            <ProfileLink username={ident.username} className="shrink-0 focus-visible:outline-2 focus-visible:outline-primary">{ident.avatar ? (
-              <img src={ident.avatar} alt="" className="size-16 shrink-0 rounded-full border border-border object-cover" />
-            ) : (
-              <span className="grid size-16 shrink-0 place-items-center rounded-full border border-border bg-card text-xl font-bold text-foreground">{ident.name.slice(0, 1).toUpperCase()}</span>
-            )}</ProfileLink>
+            <ProfileLink username={ident.username} className="shrink-0">
+              <Avatar src={ident.avatar} name={ident.name} className="size-16 text-xl" />
+            </ProfileLink>
             <div className="grid min-w-0 gap-0.5">
-              <ProfileLink username={ident.username} className="truncate text-base font-bold text-foreground hover:underline focus-visible:outline-2 focus-visible:outline-primary"><TeamName username={ident.username}>{ident.name}</TeamName></ProfileLink>
-              {ident.username ? <Caption><ProfileLink username={ident.username} className="hover:underline focus-visible:outline-2 focus-visible:outline-primary"><TeamName username={ident.username}>@{ident.username}</TeamName></ProfileLink></Caption> : null}
+              <ProfileLink username={ident.username} className="truncate text-base font-bold text-foreground"><TeamName username={ident.username}>{ident.name}</TeamName></ProfileLink>
+              {ident.username ? <Caption><ProfileLink username={ident.username}><TeamName username={ident.username}>@{ident.username}</TeamName></ProfileLink></Caption> : null}
               <div className="flex flex-wrap items-center gap-2 pt-1">
-                {ident.supporter ? <span className="kryo-pill border border-primary/60 px-2.5 py-0.5 text-[10px] uppercase tracking-wider text-primary">Supporter</span> : null}
+                {ident.supporter ? <Tag tone="primary">Supporter</Tag> : null}
                 {ident.kryos != null ? <Caption>{ident.kryos.toLocaleString()} Kryos</Caption> : null}
               </div>
               {ident.fromPc ? <Caption>From {pcName || 'your PC'}</Caption> : null}
             </div>
           </div>
-        ) : (
-          <section className="kryo-radius grid gap-3 border border-border bg-card p-4 text-center">
-            <p className="text-sm font-bold text-foreground">Sign in to see your lists</p>
-            <p className="text-xs leading-relaxed text-muted-foreground">Your account keeps your lists, your profile and your saved games. Or connect a PC that is signed in to kryo.to.</p>
-            <Button variant="primary" onClick={signIn}>
-              Sign in with kryo.to
-            </Button>
-          </section>
-        )}
+        ) : null}
 
-        {!signedIn && ident ? (
-          <section className="kryo-radius grid gap-3 border border-border bg-card p-4">
-            <p className="text-sm font-bold text-foreground">Sign in on this phone</p>
-            <p className="text-xs leading-relaxed text-muted-foreground">
-              You are seeing {pcName || 'your PC'}'s account. Sign in with kryo.to to get your banner, badges and lists here.
-            </p>
+        {!signedIn ? (
+          <Block>
+            <p className="text-sm font-bold text-foreground">{ident ? 'Sign in on this phone' : 'Sign in to see your lists'}</p>
+            <Note>{ident ? `You are seeing ${pcName || 'your PC'}'s account. Sign in with kryo.to to get your banner, badges and lists here.` : 'Your account keeps your lists, your profile and your saved games. Or connect a PC that is signed in to kryo.to.'}</Note>
             <Button variant="primary" onClick={signIn}>
               Sign in with kryo.to
             </Button>
-          </section>
+          </Block>
         ) : null}
 
         {signedIn ? (
           <div className="flex flex-wrap gap-2">
-            <Button size="sm" onClick={() => open(`${API}/collections`)}>
+            <Button size="sm" onClick={() => push({ kind: 'collections' })}>
               Collections
             </Button>
-            <Button size="sm" onClick={() => open(`${API}/settings/profile`)}>
+            <Button size="sm" onClick={() => open(`${API}/settings#profile`)}>
               Edit profile
             </Button>
             <Button size="sm" onClick={() => open(`${API}/perks`)}>
               Perks
             </Button>
-            <Button size="sm" variant="primary" onClick={() => open(`${API}/settings`)}>
+            <Button size="sm" onClick={() => open(`${API}/settings`)}>
               Settings
-            </Button>
-            <Button size="sm" variant="danger" onClick={signOut}>
-              Sign out
             </Button>
           </div>
         ) : null}
 
-        {listCounts ? (
-          <div className="m-panel kryo-radius grid grid-cols-3 gap-px overflow-hidden border border-border bg-border">
+        <Section title="Adult games">
+          <AdultArtSetting />
+        </Section>
+
+        <LinkRow label="Notifications & updates" onClick={() => push({ kind: 'notifications' })} />
+        <LinkRow label="Help and support tickets" onClick={() => open(`${API}/support`)} />
+
+        {cells.some(([, value]) => value > 0) ? (
+          <div className="kryo-radius grid grid-cols-3 gap-px overflow-hidden border border-border bg-border">
             {cells.map(([label, value]) => (
               <div key={label} className="grid justify-items-center gap-0.5 bg-card px-2 py-3">
                 <span className="text-base font-bold text-foreground">{value.toLocaleString()}</span>
@@ -358,52 +331,40 @@ export function Profile() {
           </div>
         ) : null}
 
-        {playing.length ? (
-          <Section title="Currently playing">
-            <Covers entries={playing} onOpen={(slug) => push({ kind: 'game', slug })} />
-          </Section>
-        ) : null}
-
         {recent.length ? (
           <Section title="Recently updated">
-            <Covers entries={recent} chips onOpen={(slug) => push({ kind: 'game', slug })} />
+            <Covers entries={recent} onOpen={(slug) => push({ kind: 'game', slug })} />
             <LinkRow label="Manage my library" onClick={() => open(`${API}/library`)} />
           </Section>
         ) : null}
 
-        <Section title="Play time">
-          {snapshot ? (
-            <>
-              <div className="grid grid-cols-2 gap-2">
-                <Tile label="Played in all" value={formatPlaytime(stats.total)} />
-                <Tile label="Games" value={stats.played} />
-              </div>
+        {snapshot ? (
+          <Section title="Play time">
+              <dl className="grid grid-cols-2 gap-2">
+                <Stat label="Played in all" value={formatPlaytime(stats.total)} />
+                <Stat label="Games" value={String(stats.played)} />
+              </dl>
               {stats.top.length ? (
-                <div className="kryo-radius grid gap-3 border border-border bg-card p-3">
+                <Block>
                   {stats.top.map((g) => (
                     <div key={g.id} className="grid gap-1.5">
                       <div className="flex items-baseline justify-between gap-3">
                         <span className="truncate text-xs text-foreground">{g.title}</span>
                         <span className="shrink-0 text-xs font-bold text-foreground">{formatPlaytime(g.playtimeSeconds)}</span>
                       </div>
-                      <div className="h-1 overflow-hidden rounded-full bg-secondary">
-                        <div className="h-full rounded-full bg-primary" style={{ width: `${Math.max((g.playtimeSeconds / stats.longest) * 100, 2)}%` }} />
+                      <div className="kryo-pill h-1 overflow-hidden bg-secondary">
+                        <div className="kryo-pill h-full bg-primary" style={{ width: `${Math.max((g.playtimeSeconds / stats.longest) * 100, 2)}%` }} />
                       </div>
                     </div>
                   ))}
-                </div>
+                </Block>
               ) : null}
-            </>
-          ) : (
-            <p className="text-xs leading-relaxed text-muted-foreground">Connect a PC to see how much you have played.</p>
-          )}
-        </Section>
+          </Section>
+        ) : null}
 
         {signedIn && isTauri() ? (
           <Section title="Sign in on another device">
-            <p className="text-xs leading-relaxed text-muted-foreground">
-              On kryo.to's sign-in page, choose Sign in with your phone and scan its QR code here. Works for Kryoto Desktop and Forge too.
-            </p>
+            <Note>On kryo.to's sign-in page, choose Sign in with your phone and scan its QR code here. Works for Kryoto Desktop too.</Note>
             <Button onClick={() => void scanSignIn()}>
               <QrCode className="size-4" />
               Scan a sign-in code
@@ -411,26 +372,8 @@ export function Profile() {
           </Section>
         ) : null}
 
-        {account ? (
-          <Section title="Community activity">
-            <LinkRow label="Reputation, verified games and reports" onClick={() => open(`${API}/user/${encodeURIComponent(account.username)}`)} />
-          </Section>
-        ) : null}
-
-        {signedIn ? (
-          <Section title="Collections">
-            <p className="text-xs leading-relaxed text-muted-foreground">
-              Make a collection public at{' '}
-              <button type="button" onClick={() => open(`${API}/collections`)} className="font-bold text-foreground underline underline-offset-2">
-                my collections
-              </button>{' '}
-              and it shows here.
-            </p>
-          </Section>
-        ) : null}
-
         <Section title="Your PC">
-          <div className="kryo-radius grid gap-3 border border-border bg-card p-4">
+          <Block>
             {linked ? (
               <>
                 <div className="grid gap-0.5">
@@ -441,26 +384,39 @@ export function Profile() {
                   <Button size="sm" onClick={() => push({ kind: 'connect' })}>
                     Re-pair
                   </Button>
-                  <Button size="sm" variant="danger" onClick={() => setLinks({})}>
+                  <Button
+                    size="sm"
+                    variant="danger"
+                    onClick={() => {
+                      setLinks({})
+                      toast(`Forgot ${pcName || 'your PC'}.`, { undo: () => setLinks(links) })
+                    }}
+                  >
                     Forget PC
                   </Button>
                 </div>
               </>
             ) : (
               <>
-                <p className="text-xs leading-relaxed text-muted-foreground">No PC is connected.</p>
+                <Note>No PC is connected.</Note>
                 <Button size="sm" onClick={() => push({ kind: 'connect' })}>
                   Connect a PC
                 </Button>
               </>
             )}
             {signedIn ? (
-              <div className="border-t border-border pt-3">
+              <div id={anchorId('remote')} className="border-t border-border pt-3">
                 <RemoteConsentCard compact />
               </div>
             ) : null}
-          </div>
+          </Block>
         </Section>
+
+        {signedIn ? (
+          <Button size="sm" variant="danger" onClick={signOut}>
+            Sign out
+          </Button>
+        ) : null}
 
         <p className="text-center text-[10px] uppercase tracking-[0.3em] text-muted-foreground">Kryoto Mobile {__APP_VERSION__}</p>
       </div>

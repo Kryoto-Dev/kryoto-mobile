@@ -15,6 +15,14 @@ export function ago(iso: string | null | undefined, now = Date.now()): string {
   return new Date(at).toLocaleDateString('en', { year: 'numeric', month: 'short', day: 'numeric' })
 }
 
+/** `4:07`, `1:04:07`: how long something has been going. */
+export function clock(seconds: number): string {
+  const h = Math.floor(seconds / 3600)
+  const m = Math.floor((seconds % 3600) / 60)
+  const s = String(seconds % 60).padStart(2, '0')
+  return h ? `${h}:${String(m).padStart(2, '0')}:${s}` : `${m}:${s}`
+}
+
 const ENTITIES: Record<string, string> = { amp: '&', lt: '<', gt: '>', quot: '"', apos: "'", nbsp: ' ', reg: '®', trade: '™', copy: '©' }
 
 function decode(text: string): string {

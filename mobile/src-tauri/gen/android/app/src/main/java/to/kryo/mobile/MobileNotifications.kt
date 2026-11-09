@@ -12,6 +12,7 @@ import androidx.work.*
 import org.json.JSONObject
 import java.net.HttpURLConnection
 import java.net.URI
+import java.security.SecureRandom
 import java.util.concurrent.TimeUnit
 
 /** Native delivery survives a suspended WebView and an ordinary app close. */
@@ -26,7 +27,7 @@ object MobileNotifications {
         val old = config(c)
         val edit = prefs(c).edit().putString("config", next.toString())
         if (old.optString("token") != next.optString("token")) {
-            edit.remove("accountSeen").putLong("accountSince", System.currentTimeMillis())
+            edit.remove("accountSeen").remove("chatKey").remove("chatSeen").putLong("accountSince", System.currentTimeMillis())
             NotificationManagerCompat.from(c).cancelAll()
         }
         val nextPrefs = next.optJSONObject("prefs") ?: JSONObject()
@@ -40,7 +41,7 @@ object MobileNotifications {
         channels(c)
         val manager = WorkManager.getInstance(c)
         val settings = next.optJSONObject("prefs") ?: JSONObject()
-        if (listOf("complete", "failed", "requests", "community", "news", "account").any { settings.optBoolean(it) }) {
+        if (listOf("chat", "complete", "failed", "requests", "community", "news", "account").any { settings.optBoolean(it) }) {
             val work = PeriodicWorkRequestBuilder<MobileNotificationWorker>(15, TimeUnit.MINUTES)
                 .setConstraints(Constraints.Builder().setRequiredNetworkType(NetworkType.CONNECTED).build()).build()
             manager.enqueueUniquePeriodicWork("mobile-notifications", ExistingPeriodicWorkPolicy.KEEP, work)
@@ -58,6 +59,53 @@ object MobileNotifications {
             manager.createNotificationChannel(NotificationChannel(id, title, NotificationManager.IMPORTANCE_DEFAULT))
         }
         manager.createNotificationChannel(NotificationChannel("watch", "Following desktop downloads", NotificationManager.IMPORTANCE_LOW))
+        manager.createNotificationChannel(NotificationChannel("chat", "Chat", NotificationManager.IMPORTANCE_HIGH))
+    }
+
+    /** A chat message or a ring, in the engine's words; one notice per sender. */
+    fun chat(c: Context, title: String, body: String) {
+        channels(c)
+        show(c, "chat", "chat:$title", title, body, "chats")
+    }
+
+    /** Where the gateway is: the real one, or a local one in a debug build. */
+    private fun gatewayOk(url: String): Boolean = url == "https://ws.kryo.to" || (BuildConfig.DEBUG && Regex("http://10\\.0\\.2\\.2:\\d+").matches(url))
+
+    /**
+     * What the gateway needs to answer this phone with the app closed, or null
+     * with chat notices off: a key the background check shows it.
+     */
+    @Synchronized
+    fun chatEndpoint(c: Context, gateway: String): String? {
+        if (!gatewayOk(gateway)) return null
+        val edit = prefs(c).edit().putString("chatGateway", gateway)
+        if (!enabled(c, "chat")) {
+            edit.remove("chatKey").apply()
+            return null
+        }
+        val key = prefs(c).getString("chatKey", null) ?: ByteArray(32).also { SecureRandom().nextBytes(it) }.joinToString("") { "%02x".format(it) }
+        edit.putString("chatKey", key).apply()
+        return "kryo-native:$key"
+    }
+
+    /** Asks the gateway what is waiting, and says so once per new message. */
+    @Synchronized
+    fun chatCheck(c: Context) {
+        val key = prefs(c).getString("chatKey", null) ?: return
+        val gateway = prefs(c).getString("chatGateway", null)?.takeIf { gatewayOk(it) } ?: return
+        if (!enabled(c, "chat")) return
+        val answer = get("$gateway/v1/push/waiting", key)
+        val waiting = answer.optInt("waiting")
+        val newest = answer.optLong("newest")
+        val id = "chat:waiting"
+        if (waiting == 0) {
+            NotificationManagerCompat.from(c).cancel(id.hashCode())
+        } else if (newest != prefs(c).getLong("chatSeen", 0)) {
+            channels(c)
+            if (waiting == 1) show(c, "chat", id, "New message", "Open Kryoto to read it.", "chats")
+            else show(c, "chat", id, "$waiting new messages", "Open Kryoto to read them.", "chats")
+            prefs(c).edit().putLong("chatSeen", newest).apply()
+        }
     }
 
     fun contentIntent(c: Context, target: String, id: String): PendingIntent {
@@ -113,8 +161,10 @@ object MobileNotifications {
         val octets = host.split('.').mapNotNull { it.toIntOrNull() }
         val privateIp = octets.size == 4 && octets.joinToString(".") == host && octets.all { it in 0..255 } &&
             (octets[0] == 10 || (octets[0] == 172 && octets[1] in 16..31) || (octets[0] == 192 && octets[1] == 168))
-        val localTest = BuildConfig.DEBUG && uri.scheme == "http" && host == "10.0.2.2" && uri.port == 3100 && uri.path.startsWith("/api/")
-        require(uri.userInfo == null && (localTest || (uri.scheme == "https" && host == "kryo.to" && uri.port in listOf(-1, 443)) ||
+        val localTest = BuildConfig.DEBUG && uri.scheme == "http" && host == "10.0.2.2" &&
+            ((uri.port == 3100 && uri.path.startsWith("/api/")) || uri.path == "/v1/push/waiting")
+        val gateway = uri.scheme == "https" && host == "ws.kryo.to" && uri.port in listOf(-1, 443) && uri.path == "/v1/push/waiting"
+        require(uri.userInfo == null && (localTest || gateway || (uri.scheme == "https" && host == "kryo.to" && uri.port in listOf(-1, 443)) ||
             (uri.scheme == "http" && privateIp && uri.normalize().path.startsWith("/v1/"))))
         val conn = uri.toURL().openConnection() as HttpURLConnection
         try {
@@ -181,7 +231,7 @@ object MobileNotifications {
             val type = n.optString("type")
             val group = when {
                 type.startsWith("request.") || type == "signal.refilled" -> "requests"
-                type.startsWith("comment.") || type.startsWith("friend.") || type.startsWith("collection.") || type == "support.replied" -> "community"
+                type.startsWith("comment.") || type.startsWith("friend.") || type.startsWith("collection.") || type == "support.replied" || type == "mention" -> "community"
                 type in setOf("blog.published", "changelog.released", "site.announcement") -> "news"
                 type in setOf("account.security", "supporter.expiring", "badge.review") -> "account"
                 else -> null
@@ -205,6 +255,7 @@ class MobileNotificationWorker(context: Context, params: WorkerParameters) : Wor
     override fun doWork(): Result {
         val cfg = MobileNotifications.config(applicationContext)
         try { MobileNotifications.snapshot(applicationContext, cfg)?.let { MobileNotifications.observe(applicationContext, it) } } catch (_: Exception) { }
+        try { MobileNotifications.chatCheck(applicationContext) } catch (_: Exception) { }
         try { MobileNotifications.account(applicationContext, cfg) } catch (_: Exception) { return Result.retry() }
         return Result.success()
     }

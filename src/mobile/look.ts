@@ -16,6 +16,8 @@ export function applyLook(look: PhoneLook) {
   html.dataset.radius = look.radius
   if (look.reducedMotion) html.dataset.motion = 'reduced'
   else delete html.dataset.motion
+  if (look.classicIcons) html.dataset.icons = 'classic'
+  else delete html.dataset.icons
   if (look.season) html.dataset.season = look.season
   else delete html.dataset.season
   if (look.font === 'mono') html.dataset.font = 'mono'

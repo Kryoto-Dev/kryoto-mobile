@@ -1,0 +1,126 @@
+name: Preview release
+
+# Kryoto Mobile Preview: the `preview` branch, built for members of a Kryoto
+# Preview (kryo.to docs/preview.md).
+#
+# Every push to `preview` builds it again and replaces ONE rolling GitHub
+# pre-release tagged `preview`. The app is "Kryoto Preview" with the Android
+# id to.kryo.mobile.preview, so it installs beside Kryoto Mobile; it talks to
+# preview.kryo.to (VITE_KRYO_API, and KRYOTO_CHANNEL for the native side's
+# allowlist) and shows the Report button (VITE_KRYOTO_CHANNEL). Signed with the
+# same key as the release, so each build installs over the last preview one.
+# A pre-release is never what kryo.to/mobile offers; kryo.to/preview offers it
+# to members (kryo.to lib/preview-builds.ts). Release APKs only, arm64 and the
+# emulator's x86_64.
+on:
+  push:
+    branches: [preview]
+  workflow_dispatch:
+
+concurrency:
+  group: preview-release
+  cancel-in-progress: true
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - id: v
+        shell: bash
+        run: |
+          base=$(node -p "require('./mobile/src-tauri/tauri.conf.json').version")
+          echo "version=${base}-preview.${{ github.run_number }}" >> "$GITHUB_OUTPUT"
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-linux-android,x86_64-linux-android
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+      # The Android SDK and NDK exactly as release.yml sets them up.
+      - name: Android SDK
+        shell: bash
+        run: |
+          SDKROOT="$ANDROID_HOME"
+          SDKMANAGER="$SDKROOT/cmdline-tools/latest/bin/sdkmanager"
+          yes | "$SDKMANAGER" --sdk_root="$SDKROOT" "platforms;android-35" "build-tools;35.0.0" "ndk;27.0.12077973" > /dev/null
+          echo "NDK_HOME=$SDKROOT/ndk/27.0.12077973" >> "$GITHUB_ENV"
+      - run: pnpm install --frozen-lockfile
+      - name: Require stable Android signing
+        env:
+          KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+        run: test -n "$KEYSTORE_BASE64" && test -n "$KEYSTORE_PASSWORD" || { echo "::error::Configure the Android signing secrets first."; exit 1; }
+
+      # Its own Android id, so it installs beside Kryoto Mobile; the Kotlin
+      # namespace stays as it is (that is code, not the app's identity).
+      - name: Preview identity
+        shell: bash
+        run: |
+          sed -i 's/applicationId = "to.kryo.mobile"/applicationId = "to.kryo.mobile.preview"/' mobile/src-tauri/gen/android/app/build.gradle.kts
+          sed -i 's/<string name="app_name">"Kryoto"<\/string>/<string name="app_name">"Kryoto Preview"<\/string>/' mobile/src-tauri/gen/android/app/src/main/res/values/strings.xml
+          grep -n 'applicationId' mobile/src-tauri/gen/android/app/build.gradle.kts
+          V="${{ steps.v.outputs.version }}" node -e '
+            const fs = require("fs");
+            const c = JSON.parse(fs.readFileSync("mobile/src-tauri/tauri.preview.conf.json", "utf8"));
+            c.version = process.env.V;
+            fs.writeFileSync("mobile/preview.build.json", JSON.stringify(c, null, 2));
+          '
+
+      - name: Build the release APKs
+        working-directory: mobile
+        env:
+          KRYOTO_CHANNEL: preview
+          VITE_KRYOTO_CHANNEL: preview
+          VITE_KRYO_API: https://preview.kryo.to
+        run: pnpm tauri android build --apk --split-per-abi --target aarch64 --target x86_64 --config preview.build.json
+
+      - name: Sign and name the APKs
+        shell: bash
+        env:
+          VERSION: ${{ steps.v.outputs.version }}
+          KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          echo "$KEYSTORE_BASE64" | base64 -d > /tmp/release.jks
+          STOREPASS="$KEYSTORE_PASSWORD"; ALIAS="${KEY_ALIAS:-kryoto}"; KEYPASS="${KEY_PASSWORD:-$KEYSTORE_PASSWORD}"
+          mkdir -p out
+          for apk in mobile/src-tauri/gen/android/app/build/outputs/apk/*/release/*.apk; do
+            [ -f "$apk" ] || continue
+            dir=$(basename "$apk" .apk | sed -n 's/^app-\(.*\)-release-unsigned$/\1/p')
+            case "$dir" in arm64) abi="arm64-v8a" ;; arm) abi="armeabi-v7a" ;; *) abi="$dir" ;; esac
+            "$ANDROID_HOME/build-tools/35.0.0/zipalign" -f 4 "$apk" aligned.apk
+            "$ANDROID_HOME/build-tools/35.0.0/apksigner" sign --ks /tmp/release.jks --ks-key-alias "$ALIAS" \
+              --ks-pass "pass:$STOREPASS" --key-pass "pass:$KEYPASS" --out "out/Kryoto-Mobile-Preview_${VERSION}_${abi}.apk" aligned.apk
+            rm aligned.apk
+          done
+          rm -f /tmp/release.jks
+          ls -la out
+          [ -n "$(ls out)" ] || { echo "::error::No APKs were built."; exit 1; }
+
+      - name: Replace the preview release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          VERSION: ${{ steps.v.outputs.version }}
+        run: |
+          gh release delete preview --repo "$REPO" --cleanup-tag --yes || true
+          gh release create preview --repo "$REPO" --prerelease --target "${{ github.sha }}" \
+            --title "Kryoto Mobile Preview $VERSION" \
+            --notes "For members of a Kryoto Preview. Installs beside Kryoto Mobile and talks to preview.kryo.to. Get it from kryo.to/preview." \
+            out/*.apk

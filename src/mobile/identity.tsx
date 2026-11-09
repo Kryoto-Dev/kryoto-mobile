@@ -1,4 +1,5 @@
 import { useSyncExternalStore, type ReactNode } from 'react'
+import { cn } from '@/lib/utils'
 import { TeamGem } from '@/mobile/pixel-badges'
 import { API, openExternal } from '@/mobile/auth'
 
@@ -46,6 +47,12 @@ export function TeamName({ username, children }: { username: string | null | und
 /** Use around an identity, beside its actions, so a name never nests a link inside a button. */
 export function ProfileLink({ username, children, className, onProfile }: { username: string | null | undefined; children: ReactNode; className?: string; onProfile?: () => void }) {
   if (!username) return <span className={className}>{children}</span>
-  const path = `/user/${encodeURIComponent(username)}`
-  return <a href={`${API}${path}`} className={className} onClick={event => { event.preventDefault(); if (onProfile) onProfile(); else void openExternal(`${API}${path}`) }}>{children}</a>
+  const url = `${API}/user/${encodeURIComponent(username)}`
+  return <a href={url} className={cn('focus-visible:outline-2 focus-visible:outline-primary', className)} onClick={event => { event.preventDefault(); if (onProfile) onProfile(); else void openExternal(url) }}>{children}</a>
+}
+
+/** A profile picture, or the first letter of the name when there is none. */
+export function Avatar({ src, name, className }: { src: string | null | undefined; name: string; className?: string }) {
+  if (src) return <img src={src} alt="" className={cn('shrink-0 rounded-full border border-border object-cover', className)} />
+  return <span className={cn('grid shrink-0 place-items-center rounded-full border border-border bg-secondary font-bold text-foreground', className)}>{name.slice(0, 1).toUpperCase()}</span>
 }

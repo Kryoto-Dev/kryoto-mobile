@@ -1,11 +1,11 @@
 import { useMemo, useState } from 'react'
-import { Pause, Play, RotateCw, Square, Trash2, X } from 'lucide-react'
+import { Pause, Play, RotateCw, Trash2, X } from '@/ui/pixel-icons'
 import { AsciiBar, Button, Caption } from '@/ui'
 import { cn } from '@/lib/utils'
 import { formatBytes, formatLeft } from '@/lib/downloads'
 import { useApp } from '@/mobile/context'
 import type { DownloadAction } from '@/mobile/link'
-import { Notice, Poster, Sheet, SheetRow } from '@/mobile/parts'
+import { Note, Notice, PlayButton, Poster, Sheet, SheetRow } from '@/mobile/parts'
 import type { DownloadStatus, PhoneDownload } from '@/mobile/types'
 import { useLiveReceived } from '@/mobile/live-progress'
 
@@ -68,7 +68,7 @@ function Row({ d, offline, pending, canPlay, playing, starting, onPlay, onStop, 
         </div>
       </div>
       {WORKING.has(d.status) || d.status === 'paused' || d.status === 'queued' ? <AsciiBar fraction={d.status === 'queued' ? 0 : fraction} cells={26} showPct={fraction !== null} className={d.status === 'paused' ? 'text-muted-foreground' : 'text-foreground'} /> : null}
-      {note ? <p className="text-[11px] leading-relaxed text-muted-foreground">{note}</p> : null}
+      {note ? <Note>{note}</Note> : null}
       <div className="flex flex-wrap gap-2">
         {d.status === 'queued' || WORKING.has(d.status) ? (
           <Button size="sm" disabled={off || d.status === 'verifying' || d.status === 'extracting'} onClick={() => onAct('pause')}>
@@ -93,19 +93,7 @@ function Row({ d, offline, pending, canPlay, playing, starting, onPlay, onStop, 
             Clear
           </Button>
         )}
-        {d.status === 'installed' && canPlay ? (
-          playing ? (
-            <Button size="sm" variant="danger" disabled={offline} onClick={onStop}>
-              <Square className="size-3" />
-              Stop
-            </Button>
-          ) : (
-            <Button size="sm" variant="primary" disabled={offline || starting} onClick={onPlay}>
-              <Play className="size-3" />
-              {starting ? 'Starting...' : 'Play'}
-            </Button>
-          )
-        ) : null}
+        {d.status === 'installed' && canPlay ? <PlayButton running={playing} starting={starting} offline={offline} onPlay={onPlay} onStop={onStop} size="sm" /> : null}
       </div>
     </li>
   )
@@ -186,10 +174,8 @@ export function Downloads() {
           <ul className="grid gap-2">{rows(done)}</ul>
         </section>
       ) : null}
-      {offline && (open.length || done.length) ? <Caption className="text-center">PC is offline. This is how it looked when it last answered.</Caption> : null}
-
       <Sheet open={!!asking} onClose={() => setAsking(null)} title={asking ? `Cancel ${asking.title}?` : 'Cancel'}>
-        <p className="px-1 pb-2 text-xs leading-relaxed text-muted-foreground">What is already downloaded is deleted from the PC.</p>
+        <Note className="px-1 pb-2">What is already downloaded is deleted from the PC.</Note>
         <SheetRow
           onClick={() => {
             const d = asking

@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
+import { useHideAdult, withoutAdult } from '@/mobile/adult'
 import { CatalogGameCard, UploadCard } from '@/mobile/cards'
-import { compareBy, loadCatalog, SORT_LABEL, useCatalog, type Sort } from '@/mobile/catalog-store'
+import { compareBy, loadCatalog, useCatalog, type Sort } from '@/mobile/catalog-store'
 import { useApp } from '@/mobile/context'
 import { Busy, Chip, Notice, Sentinel, Strip } from '@/mobile/parts'
 import { useUploadSlots } from '@/mobile/upload'
@@ -23,6 +24,9 @@ const SORTS: { id: Sort; label: string }[] = [
 export function Browse() {
   const { push } = useApp()
   const catalog = useCatalog()
+  // The account's Hide leaves adult games out, as kryo.to's Browse does.
+  const hideAdult = useHideAdult()
+  const cards = useMemo(() => withoutAdult(catalog.cards, hideAdult), [catalog.cards, hideAdult])
   const uploads = useUploadSlots()
   const [genre, setGenre] = useState<string | null>(null)
   const [sort, setSort] = useState<Sort>('new')
@@ -37,21 +41,21 @@ export function Browse() {
   // The genres most games carry, most first.
   const genres = useMemo(() => {
     const count = new Map<string, number>()
-    for (const g of catalog.cards) for (const name of g.genres) count.set(name, (count.get(name) ?? 0) + 1)
+    for (const g of cards) for (const name of g.genres) count.set(name, (count.get(name) ?? 0) + 1)
     return [...count]
       .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
       .slice(0, 24)
       .map(([name]) => name)
-  }, [catalog.cards])
+  }, [cards])
 
   const list = useMemo(() => {
-    const matching = genre ? catalog.cards.filter((g) => g.genres.includes(genre)) : catalog.cards
+    const matching = genre ? cards.filter((g) => g.genres.includes(genre)) : cards
     return [...matching].sort(compareBy(sort))
-  }, [catalog.cards, genre, sort])
+  }, [cards, genre, sort])
 
   // Games still arriving lead the list, as on the site, unless a genre is picked.
   const arriving = genre ? [] : uploads
-  const count = genre ? list.length : Math.max(catalog.total, list.length)
+  const count = genre || hideAdult ? list.length : Math.max(catalog.total, list.length)
 
   return (
     <div className="grid gap-3">
@@ -59,11 +63,7 @@ export function Browse() {
         <h1 className="text-lg font-bold tracking-tight text-foreground">Browse games</h1>
         <p className="text-[11px] text-muted-foreground">
           <span className="tabular-nums text-foreground">{count.toLocaleString()}</span> {count === 1 ? 'game' : 'games'}
-          <span className="text-muted-foreground/70">
-            {' · '}
-            {SORT_LABEL[sort]}
-            {catalog.loading && catalog.cards.length ? ' · loading more' : ''}
-          </span>
+          {catalog.loading && catalog.cards.length ? <span className="text-muted-foreground/70"> · loading more</span> : null}
         </p>
       </div>
       <Strip>
@@ -86,7 +86,7 @@ export function Browse() {
       <ul className="grid grid-cols-2 gap-3">
         {arriving.map((u) => (
           <li key={u.id}>
-            <UploadCard upload={u} />
+            <UploadCard upload={u} onOpen={u.slug ? () => push({ kind: 'game', slug: u.slug! }) : undefined} />
           </li>
         ))}
         {list.slice(0, shown).map((g) => (

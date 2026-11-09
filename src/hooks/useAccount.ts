@@ -1,0 +1,111 @@
+import { useEffect, useState } from 'react'
+import { call, isTauri, on } from '@/lib/bridge'
+import type { AccountAppearance, CatalogAppearance } from '@/lib/settings'
+
+export type Account = {
+  username: string
+  displayName: string | null
+  avatarUrl: string | null
+  appearance?: AccountAppearance | null
+  /** A kryo.to supporter, or someone who bought "no ads": never asked to donate. */
+  supporter?: boolean
+  /** Their donation rank ('supporter' up to 'sponsor'): which rank emoji and stickers they can use. */
+  rank?: string | null
+  /** Chat is rolled out to this account (kryo.to feature flag). */
+  chat?: boolean
+  /** Friends are rolled out to this account (kryo.to feature flag). */
+  friends?: boolean
+  /** Group chats are rolled out to this account (kryo.to feature flag). */
+  groups?: boolean
+  /** The public room is rolled out to this account (kryo.to feature flag). */
+  room?: boolean
+  /** Voice calls are rolled out to this account (kryo.to feature flag). */
+  voice?: boolean
+  /** Controller support is rolled out to this account (kryo.to feature flag). */
+  controller?: boolean
+  /** Cloud saves are rolled out to this account (kryo.to feature flag `cloud_saves`). */
+  cloudSaves?: boolean
+  /**
+   * Their Kryos, kryo.to's coin for perks and badges. Shown beside the
+   * account; a click opens the wallet (claims, the shop) in the Store.
+   */
+  kryos?: number | null
+  /** Using the client without an account (see App). */
+  guest?: boolean
+}
+
+/** Stands in for an account while using the client as a guest. */
+export const GUEST: Account = { username: '', displayName: 'Guest', avatarUrl: null, appearance: null, guest: true }
+
+/** The site's actual theme, also available when signed out. */
+export function useCatalogAppearance() {
+  const [appearance, setAppearance] = useState<CatalogAppearance | null>(null)
+  useEffect(() => {
+    let stop: (() => void) | undefined
+    let cancelled = false
+    void on<CatalogAppearance>('catalog-appearance', value => { if (!cancelled) setAppearance(value) }).then(fn => {
+      if (cancelled) return fn()
+      stop = fn
+      if (isTauri()) void call('store_refresh_account').catch(() => {})
+    }).catch(() => {})
+    return () => { cancelled = true; stop?.() }
+  }, [])
+  return appearance
+}
+
+/**
+ * Who is signed in to kryo.to - read from the Store web view, which holds the
+ * real session. `undefined` until the Store has loaded and said; `null` when
+ * signed out. One sign-in, shared by the Store and the client.
+ */
+/**
+ * The last account kryo.to reported, kept so a start opens the client as that
+ * account before the Store has said (and with no connection at all, when it
+ * cannot say).
+ */
+const REMEMBER = 'kryoto.account'
+function remembered(): Account | undefined {
+  try {
+    const a = JSON.parse(localStorage.getItem(REMEMBER) ?? 'null') as Account | null
+    return a?.username ? a : undefined
+  } catch {
+    return undefined
+  }
+}
+function remember(a: Account | null) {
+  try {
+    if (a) localStorage.setItem(REMEMBER, JSON.stringify(a))
+    else localStorage.removeItem(REMEMBER)
+  } catch {
+    /* not important */
+  }
+}
+
+export function useAccount(): Account | null | undefined {
+  // The account kryo.to last reported, online too: the client opens as it
+  // straight away instead of waiting on the Store (a slow kryo.to kept
+  // "Checking your account" up for minutes). The Store's own answer replaces
+  // it as soon as it comes; signed out sends the client back to the welcome
+  // screen (App).
+  const [account, setAccount] = useState<Account | null | undefined>(() =>
+    isTauri()
+      ? remembered()
+      : { username: 'mira', displayName: 'Mira', avatarUrl: null, appearance: null, kryos: null, chat: true, friends: true, groups: true, room: true, voice: true, controller: true, cloudSaves: true },
+  )
+  useEffect(() => {
+    let stop: (() => void) | undefined
+    let cancelled = false
+    void on<Account | null>('account-state', (a) => {
+      remember(a)
+      setAccount(a)
+    }).then((fn) => {
+      if (cancelled) fn()
+      else stop = fn
+    })
+    return () => {
+      cancelled = true
+      stop?.()
+    }
+  }, [])
+  return account
+}

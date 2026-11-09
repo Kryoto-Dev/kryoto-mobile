@@ -6,7 +6,7 @@ export type LanLink = { host: string; token: string; installId: string; name: st
 export type RelayLink = { installId: string; name: string }
 export type Links = { lan?: LanLink; relay?: RelayLink }
 export type ViewMode = 'grid' | 'list'
-export type SortMode = 'alpha' | 'recent' | 'playtime' | 'added'
+export type SortMode = 'alpha' | 'recent' | 'playtime' | 'added' | 'size'
 
 const KEYS = {
   token: 'kryoto.mobile.token',
@@ -16,6 +16,8 @@ const KEYS = {
   sort: 'kryoto.mobile.sort',
   snapshot: 'kryoto.mobile.snapshot',
   look: 'kryoto.mobile.look',
+  notifications: 'kryoto.mobile.notifications',
+  chatHere: 'kryo.chat.here',
 } as const
 
 function read(key: string): string | null {
@@ -70,7 +72,7 @@ export const store = {
 
   sort: (): SortMode => {
     const v = read(KEYS.sort)
-    return v === 'recent' || v === 'playtime' || v === 'added' ? v : 'alpha'
+    return v === 'recent' || v === 'playtime' || v === 'added' || v === 'size' ? v : 'alpha'
   },
   setSort: (s: SortMode) => write(KEYS.sort, s),
 
@@ -86,4 +88,16 @@ export const store = {
     return l && typeof l.palette === 'string' && typeof l.radius === 'string' && typeof l.theme === 'string' ? l : null
   },
   setLook: (l: PhoneLook | null) => write(KEYS.look, l ? JSON.stringify(l) : null),
+
+  /** What Android may be sent; the keys are `MOBILE_NOTIFICATIONS` in platform.ts. */
+  notifications: (): Record<string, unknown> => readJson<Record<string, unknown>>(KEYS.notifications) ?? {},
+  setNotifications: (prefs: Record<string, boolean>) => write(KEYS.notifications, JSON.stringify(prefs)),
+
+  /** Chat has worked in this app before: start it with the app, so calls ring. */
+  chatHere: (): boolean => read(KEYS.chatHere) === '1',
+  setChatHere: () => write(KEYS.chatHere, '1'),
+
+  /** When Later was pressed on this version's update prompt, in ms. */
+  updateLater: (version: string): number => Number(read(`kryoto.mobile.update.${version}`) ?? 0),
+  setUpdateLater: (version: string) => write(`kryoto.mobile.update.${version}`, String(Date.now())),
 }

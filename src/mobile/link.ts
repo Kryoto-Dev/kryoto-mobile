@@ -293,6 +293,8 @@ export interface LibraryLink {
    * only honest source for "connected locally / through kryo.to".
    */
   route: LinkRoute | null
+  /** The PC has been asked at least once: until then, no answer does not mean it is away. */
+  asked: boolean
   play(id: string): Promise<void>
   stop(id: string): Promise<void>
   /** Sends a kryo.to game's download to the PC and says so in a toast. False when it was not sent. */
@@ -345,6 +347,7 @@ export function useLibraryLink(
   const [state, setState] = useState<LinkState>(links.lan || (links.relay && token) ? 'offline' : 'unlinked')
   const [lastSeen, setLastSeen] = useState<number | null>(null)
   const [route, setRoute] = useState<LinkRoute | null>(null)
+  const [asked, setAsked] = useState(false)
   const [starting, setStarting] = useState<ReadonlySet<string>>(new Set())
   const via = useRef<'lan' | 'relay' | null>(null)
   const refresh = useRef<() => void>(() => {})
@@ -363,6 +366,7 @@ export function useLibraryLink(
     }
     setSnapshot((cur) => cur?.installId === (lan?.installId ?? relayId) ? cur : kept({ lan, relay: relayId ? { installId: relayId, name: '' } : undefined }))
     setStarting(new Set())
+    setAsked(false)
 
     let stopped = false
     let busy = false
@@ -375,6 +379,7 @@ export function useLibraryLink(
     let moving = false
     let followUntil = 0
     let relayOff = false
+    let toldForgotten = false
 
     const fetchOnce = async (): Promise<{ got: Fetched; by: 'lan' | 'relay' } | null> => {
       const now = Date.now()
@@ -388,7 +393,11 @@ export function useLibraryLink(
         } catch (e) {
           lanFails += 1
           // A phone that was removed on the PC will never come back by itself.
-          if (e instanceof ApiError && e.status === 401) toast('This PC no longer knows this phone. Pair again.')
+          // Said once: this runs on every poll.
+          if (e instanceof ApiError && e.status === 401 && !toldForgotten) {
+            toldForgotten = true
+            toast('This PC no longer knows this phone. Pair again.')
+          }
         }
       }
       if (relayLinkNow && !relayOff && (!lanLinkNow || lanFails >= 1)) {
@@ -418,6 +427,7 @@ export function useLibraryLink(
       const found = await fetchOnce()
       if (stopped) return
       via.current = found?.by ?? (relayMode ? 'relay' : lanLinkNow ? 'lan' : 'relay')
+      setAsked(true)
       if (!found) {
         setState('offline')
         return
@@ -610,5 +620,5 @@ export function useLibraryLink(
     [active, toast],
   )
 
-  return { snapshot, state, lastSeen, route, play, stop, download, control, removeGame, achievements, starting }
+  return { snapshot, state, lastSeen, route, asked, play, stop, download, control, removeGame, achievements, starting }
 }

@@ -30,13 +30,6 @@ export type CatalogCard = {
 
 export type Sort = 'new' | 'rating' | 'az' | 'released'
 
-export const SORT_LABEL: Record<Sort, string> = {
-  new: 'newest added',
-  rating: 'top rated',
-  az: 'A to Z',
-  released: 'newest released',
-}
-
 export type CatalogState = {
   cards: CatalogCard[]
   /** How many games kryo.to says there are. */

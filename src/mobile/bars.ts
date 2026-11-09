@@ -4,7 +4,7 @@
  * far in its own content must stay: as CSS pixels in `--sat`, `--sab`,
  * `--sal` and `--sar`. (The WebView's `env(safe-area-inset-*)` stays 0.)
  */
-type Insets = { top: number; bottom: number; left: number; right: number }
+type Insets = { top: number; bottom: number; left: number; right: number; keyboard?: boolean }
 
 interface Bars {
   insets(): string
@@ -24,6 +24,8 @@ function setInsets(i: Insets) {
   style.setProperty('--sab', `${i.bottom}px`)
   style.setProperty('--sal', `${i.left}px`)
   style.setProperty('--sar', `${i.right}px`)
+  // The tab bar steps aside for it (motion.css): it would sit on the form being filled in.
+  document.documentElement.toggleAttribute('data-keyboard', !!i.keyboard)
 }
 
 /** Take the insets now, and again whenever they change (rotation, keyboard). */

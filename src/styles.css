@@ -128,6 +128,8 @@
   html, body, #root { height: 100%; overflow: hidden; }
   body {
     margin: 0;
+    /* A long word or address breaks at the edge of its box, in every list and notice. */
+    overflow-wrap: break-word;
     background: var(--background);
     color: var(--foreground);
     font-family: var(--kryo-text);
@@ -190,6 +192,18 @@
 @keyframes kryo-blink { 50% { opacity: 0; } }
 .kryo-in { animation: kryo-in var(--kryo-dur-base) var(--kryo-ease-out) both; }
 .kryo-pop { animation: kryo-pop var(--kryo-dur-base) var(--kryo-ease-out) both; }
+/* A setting a toast was sent to (mobile/settings-links.ts): a ring in the
+   accent for a moment, as on kryo.to and in Kryoto Desktop. */
+.kryo-deep-link-target { animation: kryo-deep-link-flash 2000ms ease-out; }
+@keyframes kryo-deep-link-flash {
+  0%, 70% {
+    box-shadow: 0 0 0 2px var(--primary), 0 0 0 6px color-mix(in oklch, var(--primary) 25%, transparent);
+  }
+  100% { box-shadow: 0 0 0 2px transparent, 0 0 0 6px transparent; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .kryo-deep-link-target { animation: none; box-shadow: 0 0 0 2px var(--primary); }
+}
 .kryo-fade { animation: kryo-fade var(--kryo-dur-fast) ease both; }
 /* Kryoto Mobile: a tab or page arriving slides a little in from --kryo-slide, fading up. */
 @keyframes kryo-slide { from { opacity: 0; transform: translateX(var(--kryo-slide, 24px)); } to { opacity: 1; transform: none; } }
@@ -224,10 +238,11 @@
   vertical-align: middle;
 }
 .kryo-matrix > i {
-  border-radius: 20%;
+  border-radius: var(--kryo-m-r, 20%);
   background: currentColor;
   opacity: var(--o, 0.14);
 }
+
 
 /* orbit: a head and a two-step tail, one ring cell per 110ms. */
 @keyframes kryo-m-orbit {

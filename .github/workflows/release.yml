@@ -238,6 +238,9 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           VERSION: ${{ needs.check.outputs.version }}
+          # Repository variable RELEASE_HOLD=1 creates the release as a draft, so it can go
+          # public in the same minute as kryo.to and the other apps (gh release edit --draft=false --latest).
+          HOLD: ${{ vars.RELEASE_HOLD }}
         run: |
-          gh release create "v$VERSION" out/*.apk --title "Kryoto Mobile v$VERSION" \
+          gh release create "v$VERSION" out/*.apk --title "Kryoto Mobile v$VERSION" $( [ "$HOLD" = "1" ] && echo --draft ) \
             --notes "Kryoto Mobile v$VERSION for Android. Faster QR pairing with account fallback, simpler connection screens, optional Android notifications and in-app updates. Pick arm64-v8a for most phones. Releases before 0.2.26 used temporary signing keys: uninstall an older build once before installing this stable release. Future stable updates install in the app. The _debug APK is for testing."

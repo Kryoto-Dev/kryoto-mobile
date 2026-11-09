@@ -7,8 +7,8 @@ import pkg from './package.json' with { type: 'json' }
 
 /**
  * Kryoto Mobile's web layer (src/mobile), run by the Tauri Android shell in
- * mobile/src-tauri. `pnpm mobile:web` / `pnpm mobile:web:build` (output:
- * dist-mobile/). TAURI_DEV_HOST is set by `tauri android dev` so the phone can
+ * mobile/src-tauri. `pnpm dev` / `pnpm build` (output: dist-mobile/).
+ * TAURI_DEV_HOST is set by `tauri android dev` so the phone can
  * reach this server over the network.
  */
 const host = process.env.TAURI_DEV_HOST

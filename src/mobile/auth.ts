@@ -26,13 +26,22 @@ export type Me = {
   /** 'uploader', 'moderator', 'admin', 'owner'... */
   staffRole?: string | null
   isSupporter: boolean
+  /** The current donation rank ('supporter', 'backer', 'patron', 'sponsor'), for which rank emoji and stickers the editor offers. */
+  donationTier?: string | null
   isTester?: boolean
+  /** kryo.to Settings > Appearance: adult art blurred (missing or null is the default, blurred). */
+  appearanceNsfwBlur?: boolean | null
+  /** kryo.to Settings > Appearance: adult games left off the site. Wins over the blur. */
+  appearanceNsfwHide?: boolean | null
   kryos?: { balance?: number } | null
   /** Dark-launched features this account sees (kryo.to feature flags), e.g. `friends`. */
   features?: Partial<Record<string, boolean>> | null
   /** Whether Remote is on for the account (kryo.to lib/remote-consent.ts). Missing is off. */
   remote?: RemoteConsent | null
 }
+
+/** Friends and chat are on for this account (kryo.to's `friends` flag; chat itself is `chat` and `chat_web`). */
+export const socialOn = (me: Me | null) => !!me?.id && !!me.features?.friends
 
 /** Remote, away from home: the account's own answer, the same in every Kryoto app. */
 export type RemoteConsent = { enabled: boolean; decided: boolean; enabledAt?: string | null }

@@ -33,6 +33,28 @@ pub struct NetResponse {
 #[cfg(debug_assertions)]
 const DEV_API: Option<&str> = option_env!("KRYO_DEV_API");
 
+/// Kryoto Mobile Preview (built with KRYOTO_CHANNEL=preview; kryo.to docs/preview.md)
+/// talks to the Kryoto Preview instead of kryo.to.
+const SITE_HOST: &str = match option_env!("KRYOTO_CHANNEL") {
+    Some(c) if same(c, "preview") => "preview.kryo.to",
+    _ => "kryo.to",
+};
+
+const fn same(a: &str, b: &str) -> bool {
+    let (a, b) = (a.as_bytes(), b.as_bytes());
+    if a.len() != b.len() {
+        return false;
+    }
+    let mut i = 0;
+    while i < a.len() {
+        if a[i] != b[i] {
+            return false;
+        }
+        i += 1;
+    }
+    true
+}
+
 /// kryo.to over https, or a PC's Kryoto server on a private IPv4 address.
 fn allowed(url: &Url) -> bool {
     let plain = url.username().is_empty() && url.password().is_none();
@@ -43,25 +65,35 @@ fn allowed(url: &Url) -> bool {
         }
     }
     match url.scheme() {
-        "https" => plain && url.host_str() == Some("kryo.to") && url.port().is_none(),
-        "http" => plain && matches!(url.host(), Some(Host::Ipv4(ip)) if ip.is_private()) && url.path().starts_with("/v1/"),
+        "https" => plain && url.host_str() == Some(SITE_HOST) && url.port().is_none(),
+        "http" => {
+            plain
+                && matches!(url.host(), Some(Host::Ipv4(ip)) if ip.is_private())
+                && url.path().starts_with("/v1/")
+        }
         _ => false,
     }
 }
 
 #[tauri::command]
 async fn net_request(req: NetRequest) -> Result<NetResponse, String> {
-    let url = Url::parse(&req.url).ok().filter(allowed).ok_or("Blocked address.")?;
+    let url = Url::parse(&req.url)
+        .ok()
+        .filter(allowed)
+        .ok_or("Blocked address.")?;
     let host = url.host_str().unwrap_or_default().to_string();
     let method = match req.method.to_ascii_uppercase().as_str() {
         "GET" => reqwest::Method::GET,
         "POST" => reqwest::Method::POST,
         "PUT" => reqwest::Method::PUT,
+        "PATCH" => reqwest::Method::PATCH,
         "DELETE" => reqwest::Method::DELETE,
         _ => return Err("Blocked address.".into()),
     };
     let client = reqwest::Client::builder()
-        .timeout(Duration::from_millis(req.timeout_ms.unwrap_or(15_000).clamp(500, 30_000)))
+        .timeout(Duration::from_millis(
+            req.timeout_ms.unwrap_or(15_000).clamp(500, 30_000),
+        ))
         .redirect(reqwest::redirect::Policy::none())
         .build()
         .map_err(|e| e.to_string())?;
@@ -76,6 +108,33 @@ async fn net_request(req: NetRequest) -> Result<NetResponse, String> {
     let status = response.status().as_u16();
     let body = response.text().await.map_err(|e| e.to_string())?;
     Ok(NetResponse { status, body })
+}
+
+/// A report's screenshot or file to the upload address kryo.to handed out for
+/// it (a presigned PUT on the storage bucket; kryo.to /api/preview/reports/attachments).
+/// Only there, only https, only a PUT, at most 8 MB.
+#[tauri::command]
+async fn net_upload(url: String, content_type: String, body: Vec<u8>) -> Result<u16, String> {
+    let url = Url::parse(&url)
+        .ok()
+        .filter(|u| u.scheme() == "https" && u.host_str().is_some_and(|h| h.ends_with(".backblazeb2.com")))
+        .ok_or("Blocked address.")?;
+    if body.is_empty() || body.len() > 8 * 1024 * 1024 {
+        return Err("Files from the phone go up to 8 MB.".into());
+    }
+    let client = reqwest::Client::builder()
+        .timeout(Duration::from_secs(120))
+        .redirect(reqwest::redirect::Policy::none())
+        .build()
+        .map_err(|e| e.to_string())?;
+    let res = client
+        .put(url)
+        .header("content-type", content_type)
+        .body(body)
+        .send()
+        .await
+        .map_err(|_| "The upload did not go through. Check your connection.".to_string())?;
+    Ok(res.status().as_u16())
 }
 
 /// A failed request in words a player can act on, not the HTTP library's.
@@ -111,7 +170,11 @@ pub fn run() {
     #[cfg(any(target_os = "android", target_os = "ios"))]
     let builder = builder.plugin(tauri_plugin_barcode_scanner::init());
     builder
-        .invoke_handler(tauri::generate_handler![net_request, platform::mobile_action])
+        .invoke_handler(tauri::generate_handler![
+            net_request,
+            net_upload,
+            platform::mobile_action
+        ])
         .run(tauri::generate_context!())
         .expect("error while running Kryoto Mobile");
 }

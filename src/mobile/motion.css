@@ -1,8 +1,8 @@
 /*
  * Motion for the phone app only (imported by main.tsx, so the desktop never
  * sees it). Redefines the shared entrance keyframes with a little
- * scale, then adds the phone's own: rising lists, glass sheets, a drawn tab
- * icon, live dots, glowing work. Everything here stops under
+ * scale, then adds the phone's own: rising lists, sheets, a tab icon that
+ * pops, pulsing live dots and work. Everything here stops under
  * prefers-reduced-motion (styles.css already collapses every duration, and
  * the block at the bottom turns off what that cannot).
  */
@@ -53,7 +53,8 @@ main ul > li:nth-child(n + 11) { --m-d: 440ms; }
   to { opacity: 1; transform: none; }
 }
 main img { animation: m-img 700ms var(--m-ease) backwards; }
-main img.blur-xl { animation: none; }
+/* Not a blurred cover (blur.tsx): the scale that hides its edge would animate away. */
+main img[data-blur] { animation: none; }
 
 /* ── Touch feedback ───────────────────────────────────────────────── */
 button, a { -webkit-tap-highlight-color: transparent; }
@@ -62,12 +63,18 @@ button.kryo-pill:active { transform: scale(0.94); filter: brightness(1.25); }
 main ul > li:has(> button:active), main ul > li:has(> a:active) { transform: scale(0.97); }
 
 /* ── The tab bar and the sheets ────────────────────────────── */
-/* The one place blur stays: the two bars at the bottom are slightly see-through glass. */
+/* The two bars at the bottom are slightly see-through glass, like the site's floating chrome. The
+   Store's and Library's sticky headers stay opaque: blurred, they redrew every frame of a swipe. */
 nav[aria-label='Main'] > div {
   background-color: color-mix(in oklab, var(--card) 68%, transparent);
   backdrop-filter: blur(14px) saturate(1.4);
   -webkit-backdrop-filter: blur(14px) saturate(1.4);
 }
+/* The keyboard is up: the tab bar would sit on the form being filled in. */
+html[data-keyboard] .m-bottom-bar {
+  display: none;
+}
+
 .m-bottom-glass {
   background-color: color-mix(in oklab, var(--background) 45%, transparent);
   backdrop-filter: blur(10px);
@@ -89,38 +96,13 @@ nav[aria-label='Main'] > div { animation: m-nav-in 700ms var(--m-spring) 120ms b
 .m-sheet > div > button:nth-child(3) { animation-delay: 180ms; }
 .m-sheet > div > button:nth-child(n + 4) { animation-delay: 220ms; }
 
-/* ── The tab icons draw themselves when their tab is chosen ───────── */
-@keyframes m-draw { from { stroke-dashoffset: 1; } to { stroke-dashoffset: 0; } }
+/* ── The chosen tab's icon pops ───────── */
 @keyframes m-icon-pop { 0% { transform: scale(0.6) rotate(-14deg); } 55% { transform: scale(1.25) rotate(6deg); } 100% { transform: none; } }
-.m-draw [data-draw] { stroke-dasharray: 1; stroke-dashoffset: 0; }
-button[aria-current='page'] svg, button[aria-pressed='true'] svg.m-draw, .m-tab-on svg { animation: m-icon-pop 520ms var(--m-spring) both; }
-button[aria-current='page'] .m-draw [data-draw], .m-tab-on .m-draw [data-draw] { animation: m-draw 700ms var(--m-ease) both; }
+button[aria-current='page'] svg, .m-tab-on svg { animation: m-icon-pop 520ms var(--m-spring) both; }
 
-/* ── Things that are alive ────────────────────────────────────────── */
-@keyframes m-live { 0% { box-shadow: 0 0 0 0 color-mix(in oklab, var(--success) 70%, transparent); } 100% { box-shadow: 0 0 0 9px transparent; } }
-.m-live { animation: m-live 1.6s ease-out infinite; }
-
-@keyframes m-glow { 0%, 100% { opacity: 0.55; } 50% { opacity: 1; filter: drop-shadow(0 0 6px currentColor); } }
-.m-working { animation: m-glow 1.6s ease-in-out infinite; }
-
-@keyframes m-breathe { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.04); } }
-.m-breathe { animation: m-breathe 4.2s ease-in-out infinite; }
-
-@keyframes m-float { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-7px); } }
-.m-float { animation: m-float 5s ease-in-out infinite; }
-
-/* A glint that crosses a card now and then. */
-@keyframes m-glint { 0%, 70% { transform: translateX(-120%) skewX(-18deg); } 100% { transform: translateX(260%) skewX(-18deg); } }
-.m-glint { position: relative; overflow: hidden; }
-.m-glint::after {
-  content: '';
-  position: absolute;
-  inset: 0;
-  width: 40%;
-  background: linear-gradient(90deg, transparent, color-mix(in oklab, var(--foreground) 14%, transparent), transparent);
-  animation: m-glint 3.8s ease-in-out infinite;
-  pointer-events: none;
-}
+/* ── Things that are alive: a running game's dot, work in progress ── */
+@keyframes m-pulse { 0%, 100% { opacity: 0.55; } 50% { opacity: 1; } }
+.m-live, .m-working { animation: m-pulse 1.6s ease-in-out infinite; }
 
 /* The Downloads and Games sections slide the way the pill moved. */
 @keyframes m-panel { from { opacity: 0; transform: translateY(18px); } to { opacity: 1; transform: none; } }
@@ -130,9 +112,8 @@ button[aria-current='page'] .m-draw [data-draw], .m-tab-on .m-draw [data-draw] {
 /* ── What the system setting turns off ────────────────────────────── */
 @media (prefers-reduced-motion: reduce) {
   main ul > li, main img, nav[aria-label='Main'] > div,
-  .m-live, .m-working, .m-breathe, .m-float, .m-glint::after, .m-panel, .m-sheet, .m-sheet > div > button {
+  .m-live, .m-working, .m-panel, .m-sheet, .m-sheet > div > button {
     animation: none !important;
   }
-  
 }
 html[data-motion='reduced'] main ul > li, html[data-motion='reduced'] main img { animation: none !important; }

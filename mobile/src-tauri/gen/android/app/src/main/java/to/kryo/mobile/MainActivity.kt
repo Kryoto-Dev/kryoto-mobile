@@ -50,7 +50,7 @@ class MainActivity : TauriActivity() {
       view.setPadding(0, 0, 0, keyboard)
       val density = resources.displayMetrics.density
       val bottom = if (keyboard > 0) 0f else bars.bottom / density
-      insetsJson = """{"top":${bars.top / density},"bottom":$bottom,"left":${bars.left / density},"right":${bars.right / density}}"""
+      insetsJson = """{"top":${bars.top / density},"bottom":$bottom,"left":${bars.left / density},"right":${bars.right / density},"keyboard":${keyboard > 0}}"""
       webView?.evaluateJavascript("window.__kryoInsets&&window.__kryoInsets($insetsJson)", null)
       WindowInsetsCompat.CONSUMED
     }

@@ -13,6 +13,7 @@ import {
   Monitor,
   Moon,
   Music,
+  Package,
   PenLine,
   Rocket,
   ScrollText,
@@ -27,7 +28,7 @@ import {
   Upload,
   Wrench,
   Zap,
-} from 'lucide-react'
+} from '@/ui/pixel-icons'
 import { cn } from '../lib/utils'
 import { TeamGem } from './pixel-badges'
 
@@ -59,7 +60,7 @@ const ICON: Record<string, React.ComponentType<{ className?: string }>> = {
   'pen-line': PenLine, wrench: Wrench, 'life-buoy': LifeBuoy, 'bar-chart-3': BarChart3, code: Code,
   heart: Heart, diamond: Diamond, monitor: Monitor, terminal: Terminal, apple: Apple, 'gamepad-2': Gamepad2,
   flame: Flame, zap: Zap, trophy: Trophy, sparkles: Sparkles, shield: Shield, skull: Skull, ghost: Ghost,
-  rocket: Rocket, music: Music, coffee: Coffee, moon: Moon, sun: Sun,
+  rocket: Rocket, music: Music, coffee: Coffee, moon: Moon, sun: Sun, package: Package,
 }
 
 // ---- Copied from kryo.to lib/profile-badges.ts --------------------------------
@@ -81,6 +82,7 @@ const STAFF_STYLE: Record<string, string> = {
   analyst: 'border-border bg-secondary text-muted-foreground',
 }
 const DEVELOPER_STYLE = 'border-primary/40 bg-primary/5 text-foreground'
+const REPACKER_STYLE = 'border-primary/40 bg-primary/5 text-foreground'
 const PLATFORM_SUPPORT_STYLE = 'border-foreground/50 bg-transparent text-foreground'
 const DONOR_STYLE: Record<string, string> = {
   supporter: 'border-border bg-transparent text-muted-foreground',
@@ -107,10 +109,17 @@ function toneClass(tone: string): string {
     case 'staff': return STAFF_STYLE[id] ?? CUSTOM_STYLE
     case 'developer': return DEVELOPER_STYLE
     case 'platform': return PLATFORM_SUPPORT_STYLE
+    case 'repacker': return REPACKER_STYLE
+    // Preview tester (kryo.to lib/profile-badges.ts PREVIEW_STYLE).
+    case 'preview': return 'border-foreground/50 bg-transparent text-foreground'
     case 'donor': return DONOR_STYLE[id] ?? CUSTOM_STYLE
     case 'supporter': return SUPPORTER_FALLBACK_STYLE
     case 'custom': return CUSTOM_STYLE
     case 'tester': return TESTER_STEP_STYLE[Math.min(Number(id) || 0, TESTER_STEP_STYLE.length - 1)] ?? CUSTOM_STYLE
+    // The contributor badge (kryo.to lib/profile-badges.ts CONTRIBUTOR_STYLE).
+    case 'contributor': return id === 'unverified'
+      ? 'border-dashed border-destructive/60 bg-transparent text-destructive'
+      : 'border-foreground/50 bg-transparent text-foreground'
     default: return CUSTOM_STYLE
   }
 }

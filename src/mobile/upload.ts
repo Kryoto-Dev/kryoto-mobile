@@ -18,7 +18,6 @@ export type UploadSlot = {
   phase: UploadPhase
   /** 0..100 within the current phase. */
   percent: number
-  by_name: string | null
 }
 
 export const PHASE_LABEL: Record<UploadPhase, string> = {
@@ -149,7 +148,7 @@ function seedOf(text: string): number {
 }
 
 /** One word for this slot's phase, swapped every few seconds; each slot has its own place in the rotation. */
-export function useLoadingWord(slot: UploadSlot): string {
+export function useLoadingWord(slot: Pick<UploadSlot, 'id' | 'phase'>): string {
   const [file, setFile] = useState<WordFile>({})
   const [tick, setTick] = useState(0)
   useEffect(() => {

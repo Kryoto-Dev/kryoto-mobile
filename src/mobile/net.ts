@@ -19,7 +19,7 @@ export class ApiError extends Error {
   }
 }
 
-type Options = { method?: 'GET' | 'POST' | 'PUT' | 'DELETE'; token?: string | null; body?: unknown; timeoutMs?: number }
+type Options = { method?: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE'; token?: string | null; body?: unknown; timeoutMs?: number }
 
 function hostOf(url: string): string {
   try {

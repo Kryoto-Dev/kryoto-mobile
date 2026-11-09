@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { Button, Caption } from '@/ui'
 import { useApp } from '@/mobile/context'
+import { Note } from '@/mobile/parts'
 
 /**
  * Remote, away from home (kryo.to lib/remote-consent.ts): off until the account
@@ -21,7 +22,12 @@ export function RemoteConsentCard({ compact = false }: { compact?: boolean }) {
     setSaving(true)
     try {
       await setRemote(enabled)
-      toast(enabled ? 'Remote is on.' : 'Remote is off.')
+      // Turning it off deletes what the PCs reported, so only turning it on
+      // can be taken back. Away from Profile, the toast says where it lives.
+      toast(enabled ? 'Remote is on.' : 'Remote is off.', {
+        undo: enabled ? () => choose(false) : undefined,
+        setting: compact ? undefined : 'remote',
+      })
     } catch (e) {
       toast(e instanceof Error ? e.message : 'Could not save that.')
     } finally {
@@ -36,9 +42,7 @@ export function RemoteConsentCard({ compact = false }: { compact?: boolean }) {
           <span className="text-xs font-bold text-foreground">Remote, away from home</span>
           <Caption>{remote.enabled ? 'On for your account' : 'Off'}</Caption>
         </div>
-        <p className="text-[11px] leading-relaxed text-muted-foreground">
-          {remote.enabled ? WHAT : 'Off: nothing about your PCs goes to kryo.to, and the phone reaches your PC only on its Wi-Fi. ' + WHAT.replace('kryo.to keeps', 'On, kryo.to keeps')}
-        </p>
+        <Note>{remote.enabled ? WHAT : 'Nothing about your PCs goes to kryo.to, and the phone reaches your PC only on its Wi-Fi.'}</Note>
         <Button size="sm" variant={remote.enabled ? 'outline' : 'primary'} disabled={saving} onClick={() => void choose(!remote.enabled)}>
           {saving ? 'Saving...' : remote.enabled ? 'Turn off Remote' : 'Turn on Remote'}
         </Button>
@@ -50,9 +54,11 @@ export function RemoteConsentCard({ compact = false }: { compact?: boolean }) {
   return (
     <div className="grid gap-2">
       <span className="text-xs font-bold text-foreground">{remote.decided ? 'Remote is off' : 'Turn on Remote?'}</span>
-      <p className="text-xs leading-relaxed text-muted-foreground">
-        To reach your PCs away from home, turn on Remote for your account. {WHAT} You can turn it off again in Profile or on kryo.to. A PC paired on your Wi-Fi works either way.
-      </p>
+      <Note>Reach your PCs away from home. A PC paired on your Wi-Fi works either way.</Note>
+      <details className="group text-[11px] text-muted-foreground">
+        <summary className="cursor-pointer list-none font-bold uppercase tracking-wider [&::-webkit-details-marker]:hidden">What it shares</summary>
+        <p className="mt-2 leading-relaxed">{WHAT} You can turn it off again in Profile or on kryo.to.</p>
+      </details>
       <Button disabled={saving} onClick={() => void choose(true)}>
         {saving ? 'Saving...' : 'Turn on Remote'}
       </Button>

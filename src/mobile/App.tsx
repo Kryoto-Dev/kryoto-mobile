@@ -1,7 +1,8 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react'
-import { Check, Copy, Library as LibraryIcon, Store as StoreIcon, User, X } from 'lucide-react'
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react'
+import { Check, Copy, Library as LibraryIcon, MessageSquare, Store as StoreIcon, User, X } from '@/ui/pixel-icons'
 import { SplashScene } from '@/boot/SplashScene'
-import { AsciiBar, Button, Caption, IconButton } from '@/ui'
+import { ACTION_FAILED_EVENT, AsciiBar, Button, Caption, IconButton } from '@/ui'
+import { dialogCount, watchDialogs } from '@/ui/dialog-focus'
 import { cn } from '@/lib/utils'
 import { ApprovePage } from '@/mobile/Approve'
 import {
@@ -16,27 +17,40 @@ import {
   type Me,
   type RemoteConsent,
 } from '@/mobile/auth'
-import { App as AppContextProvider, type AppContext, type Page } from '@/mobile/context'
+import { App as AppContextProvider, type AppContext, type Page, type ToastOptions } from '@/mobile/context'
+import { CollectionPage, CollectionsPage } from '@/mobile/Collections'
+import { revealSetting, type MobileSetting } from '@/mobile/settings-links'
 import { GamePage } from '@/mobile/GamePage'
 import { remoteConsent, setRemoteConsent, useLibraryLink } from '@/mobile/link'
 import { ConnectPage, Library, LibraryGamePage } from '@/mobile/Library'
-import { ApiError } from '@/mobile/net'
+import { ApiError, request } from '@/mobile/net'
+import { API, socialOn } from '@/mobile/auth'
+import { syncEmojiUsage } from '@/rich/emoji-usage'
 import { Profile } from '@/mobile/Profile'
-import { Toast } from '@/mobile/parts'
+import { clock } from '@/mobile/format'
+import { Block, Note, Toast, type ToastMessage } from '@/mobile/parts'
 import { applyLook } from '@/mobile/look'
+import { followAccount } from '@/mobile/adult'
 import { store, type Links } from '@/mobile/storage'
 import { Store } from '@/mobile/Store'
 import { NotificationsPage, UpdatePrompt } from '@/mobile/Notifications'
-import { FriendsPage } from '@/mobile/Friends'
-import { ChatProvider, ChatsPage } from '@/mobile/Chat'
+// Friends and chat (the encrypted engine, its screens, calls) load the first
+// time they are used: a guest, or an account without them, never parses them.
+const loadChat = () => import('@/mobile/Chat')
+const ChatsTab = lazy(() => loadChat().then((m) => ({ default: m.ChatsTab })))
+const ChatRuntime = lazy(() => loadChat().then((m) => ({ default: m.ChatRuntime })))
+const endChat = () => void loadChat().then((m) => m.endChat())
 import { useMobileNotifications } from '@/mobile/platform'
+import { useBackCloses } from '@/mobile/parts'
+import { PreviewReportButton } from '@/mobile/PreviewReport'
 
 type Phase = 'splash' | 'welcome' | 'main'
-type Tab = 'store' | 'library' | 'profile'
+type Tab = 'store' | 'library' | 'chats' | 'profile'
 
-const TABS: { id: Tab; label: string; icon: ReactNode }[] = [
+const ALL_TABS: { id: Tab; label: string; icon: ReactNode }[] = [
   { id: 'store', label: 'Store', icon: <StoreIcon className="size-3.5" /> },
   { id: 'library', label: 'Library', icon: <LibraryIcon className="size-3.5" /> },
+  { id: 'chats', label: 'Chats', icon: <MessageSquare className="size-3.5" /> },
   { id: 'profile', label: 'Profile', icon: <User className="size-3.5" /> },
 ]
 
@@ -49,8 +63,33 @@ export function App() {
   const [tab, setTab] = useState<Tab>('store')
   const [downloadsRequest, setDownloadsRequest] = useState(0)
   const [stack, setStack] = useState<Page[]>([])
-  const [message, setMessage] = useState<string | null>(null)
+  const [message, setMessage] = useState<ToastMessage | null>(null)
   const [slide, setSlide] = useState(28)
+  // A conversation fills the screen: the tab bar goes, and Back returns to the list.
+  const [closeConversation, setCloseConversation] = useState<(() => void) | null>(null)
+  const onConversation = useCallback((close: (() => void) | null) => setCloseConversation(() => close), [])
+  useBackCloses(!!closeConversation, () => closeConversation?.())
+  // A dialog (chat's settings, Add a friend) goes the way Escape takes it; with none of this, Back left the app.
+  const [dialogs, setDialogs] = useState(dialogCount)
+  useEffect(() => watchDialogs(() => setDialogs(dialogCount())), [])
+  useBackCloses(dialogs > 0, () => document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true })), dialogs)
+  const [chatUnread, setChatUnread] = useState(0)
+  const social = socialOn(me)
+  // The emoji picker's "Frequently used" row follows the account (src/rich/emoji-usage.ts).
+  const usageAccount = token && me ? me.username : null
+  useEffect(() => {
+    syncEmojiUsage(
+      usageAccount && token
+        ? {
+            load: () => request<{ tally?: Record<string, number> }>(`${API}/api/account/emoji-usage`, { token }).then((r) => r.json.tally ?? null),
+            save: (tally) => request(`${API}/api/account/emoji-usage`, { method: 'PUT', token, body: { tally } }),
+          }
+        : null,
+    )
+  }, [usageAccount, token])
+  const TABS = useMemo(() => ALL_TABS.filter((t) => t.id !== 'chats' || social), [social])
+  // Once Chats has been opened here it starts with the app, so messages count and calls ring.
+  const [chatOpened, setChatOpened] = useState(store.chatHere)
   const depth = useRef(0)
   /** The opening has run once: Welcome after a sign-out shows the mark settled. */
   const played = useRef(false)
@@ -58,10 +97,18 @@ export function App() {
   const tokenRef = useRef(token)
   tokenRef.current = token
 
-  const toast = useCallback((text: string) => {
+  // The setting a toast can open; filled in below, once openTab exists.
+  const openSettingRef = useRef<(where: MobileSetting) => void>(() => {})
+  const toast = useCallback((text: string, options?: ToastOptions) => {
     window.clearTimeout(toastTimer.current)
-    setMessage(text)
-    toastTimer.current = window.setTimeout(() => setMessage(null), 4000)
+    const setting = options?.setting
+    setMessage({ text, undo: options?.undo, open: setting ? () => openSettingRef.current(setting) : undefined })
+    // With an Undo, long enough to reach it with a thumb.
+    toastTimer.current = window.setTimeout(() => setMessage(null), options?.undo ? 8000 : 4000)
+  }, [])
+  const dismissToast = useCallback(() => {
+    window.clearTimeout(toastTimer.current)
+    setMessage(null)
   }, [])
 
   /** The token is no longer good: forget it and start over at Welcome. */
@@ -79,6 +126,13 @@ export function App() {
     },
     [signedOut],
   )
+
+  // A pressed button's work failed and nothing else caught it.
+  useEffect(() => {
+    const failed = (e: Event) => toast(fail((e as CustomEvent<unknown>).detail))
+    window.addEventListener(ACTION_FAILED_EVENT, failed)
+    return () => window.removeEventListener(ACTION_FAILED_EVENT, failed)
+  }, [toast, fail])
 
   const setLinks = useCallback((next: Links) => {
     store.setLink(next)
@@ -124,6 +178,9 @@ export function App() {
 
   // A phone linked to a PC looks like it: the palette, corners, typeface and
   // theme Kryoto Desktop is using now. The last one sent is kept for the next start.
+  // Adult art follows the account's blur (kryo.to Settings > Appearance), a guest's own switch otherwise.
+  useEffect(() => followAccount(token, me), [token, me])
+
   const pcLook = link.snapshot?.look
   useEffect(() => {
     const look = pcLook ?? store.look()
@@ -134,15 +191,31 @@ export function App() {
   useEffect(() => {
     if (!token) return
     let current = true
-    loadMe(token)
-      .then((user) => {
-        if (!current) return
-        if (user) setMe(user)
-        else signedOut()
-      })
-      .catch((e: unknown) => current && void fail(e))
+    let timer = 0
+    let wait = 5_000
+    // A phone often starts on a bad connection: keep asking, or Chats and the
+    // account stay missing until the app is opened again.
+    const load = () => {
+      window.clearTimeout(timer)
+      loadMe(token)
+        .then((user) => {
+          if (!current) return
+          if (user) setMe(user)
+          else signedOut()
+        })
+        .catch((e: unknown) => {
+          if (!current) return
+          void fail(e)
+          timer = window.setTimeout(load, wait)
+          wait = Math.min(wait * 2, 60_000)
+        })
+    }
+    load()
+    window.addEventListener('online', load)
     return () => {
       current = false
+      window.clearTimeout(timer)
+      window.removeEventListener('online', load)
     }
   }, [token, signedOut, fail])
 
@@ -190,6 +263,12 @@ export function App() {
         setTab('library')
         setStack([])
         setDownloadsRequest((n) => n + 1)
+      } else if (target === 'chats') {
+        if (depth.current > 0) history.go(-depth.current)
+        depth.current = 0
+        setChatOpened(true)
+        setTab('chats')
+        setStack([])
       } else if (target === 'notifications') push({ kind: 'notifications' })
     }
     window.addEventListener('mobile-notification-open', opened)
@@ -201,6 +280,11 @@ export function App() {
     depth.current = 0
     setStack([])
     setTab(next)
+    if (next === 'chats') setChatOpened(true)
+  }
+  openSettingRef.current = (where: MobileSetting) => {
+    openTab('profile')
+    revealSetting(where)
   }
 
   const context = useMemo<AppContext>(
@@ -216,7 +300,7 @@ export function App() {
       toast,
       signIn: openSignIn,
       signOut: () => {
-        void endSession(token)
+        void endSession(token).finally(endChat)
         setToken(null)
         setMe(null)
         setPhase('welcome')
@@ -233,8 +317,6 @@ export function App() {
   const page = stack[stack.length - 1]
   return (
     <AppContextProvider.Provider value={context}>
-      {/* Chat's one frame lives beside the pages, so it keeps running as you move between them. */}
-      <ChatProvider>
       <main className="relative h-full overflow-hidden bg-background text-foreground">
         {phase !== 'main' ? (
           // One element for the opening and Welcome, so the K// the opening
@@ -255,15 +337,38 @@ export function App() {
           />
         ) : (
           <>
-            {TABS.map((t) => (
-              <div
-                key={t.id}
-                style={{ '--kryo-slide': `${slide}px` } as CSSProperties}
-                className={cn('absolute inset-0 z-0 overflow-y-auto overscroll-contain pb-28', tab === t.id ? 'kryo-slide' : 'hidden')}
-              >
-                {t.id === 'store' ? <Store /> : t.id === 'library' ? <Library downloadsRequest={downloadsRequest} /> : <Profile />}
-              </div>
-            ))}
+            {TABS.map((t) =>
+              t.id === 'chats' ? (
+                <div
+                  key={t.id}
+                  style={{ '--kryo-slide': `${slide}px` } as CSSProperties}
+                  className={cn(
+                    'absolute inset-0 flex flex-col pt-[var(--sat)]',
+                    closeConversation ? 'z-[45] bg-background pb-[var(--sab)]' : 'z-0 pb-[calc(var(--sab)+5rem)]',
+                    tab === t.id ? 'kryo-slide' : 'hidden',
+                  )}
+                >
+                  {chatOpened ? (
+                    <Suspense fallback={null}>
+                      <ChatsTab onConversation={onConversation} />
+                    </Suspense>
+                  ) : null}
+                </div>
+              ) : (
+                <div
+                  key={t.id}
+                  style={{ '--kryo-slide': `${slide}px` } as CSSProperties}
+                  className={cn('absolute inset-0 z-0 overflow-y-auto overscroll-contain pb-28', tab === t.id ? 'kryo-slide' : 'hidden')}
+                >
+                  {t.id === 'store' ? <Store /> : t.id === 'library' ? <Library downloadsRequest={downloadsRequest} /> : <Profile />}
+                </div>
+              ),
+            )}
+            {social && chatOpened ? (
+              <Suspense fallback={null}>
+                <ChatRuntime showing={tab === 'chats' && !page} onUnread={setChatUnread} />
+              </Suspense>
+            ) : null}
             {page ? (
               <div key={stack.length} style={{ '--kryo-slide': '40px' } as CSSProperties} className="kryo-slide absolute inset-0 z-20 overflow-y-auto overscroll-contain bg-background pb-28">
                 {page.kind === 'game' ? (
@@ -274,10 +379,10 @@ export function App() {
                   <ApprovePage code={page.code} />
                 ) : page.kind === 'notifications' ? (
                   <NotificationsPage />
-                ) : page.kind === 'friends' ? (
-                  <FriendsPage />
-                ) : page.kind === 'chats' ? (
-                  <ChatsPage />
+                ) : page.kind === 'collections' ? (
+                  <CollectionsPage />
+                ) : page.kind === 'collection' ? (
+                  <CollectionPage id={page.id} />
                 ) : (
                   <ConnectPage />
                 )}
@@ -285,13 +390,15 @@ export function App() {
             ) : null}
             {/* The status bar's strip is solid, so nothing scrolls into view above a sticky header; the gesture bar's strip fades. */}
             <div aria-hidden className="pointer-events-none fixed inset-x-0 top-0 z-[35] h-[var(--sat)] bg-background" />
-            <div aria-hidden className="m-bottom-glass pointer-events-none fixed inset-x-0 bottom-0 z-[35] h-[calc(var(--sab)+6rem)]" />
-            <nav aria-label="Main" className="pointer-events-none fixed inset-x-0 bottom-0 z-40 grid justify-items-center px-4 pb-[calc(var(--sab)+0.75rem)]">
-              <div className="kryo-pill pointer-events-auto relative grid w-full max-w-sm grid-cols-3 gap-1 border border-border bg-card p-1 shadow-2xl shadow-black/60">
+            <div aria-hidden className="m-bottom-glass m-bottom-bar pointer-events-none fixed inset-x-0 bottom-0 z-[35] h-[calc(var(--sab)+6rem)]" />
+            {/* Kryoto Mobile Preview only (src/lib/endpoint.ts IS_PREVIEW_BUILD). */}
+            <PreviewReportButton token={token} page={tab} username={me?.username ?? null} />
+            <nav aria-label="Main" className="m-bottom-bar pointer-events-none fixed inset-x-0 bottom-0 z-40 grid justify-items-center px-4 pb-[calc(var(--sab)+0.75rem)]">
+              <div className="kryo-pill pointer-events-auto relative grid w-full max-w-sm gap-1 border border-border bg-card p-1 shadow-2xl shadow-black/15 dark:shadow-black/60" style={{ gridTemplateColumns: `repeat(${TABS.length}, minmax(0, 1fr))` }}>
                 <span
                   aria-hidden
-                  className="kryo-pill absolute inset-y-1 left-1 w-[calc((100%-1rem)/3)] bg-primary transition-transform duration-300 ease-[cubic-bezier(0.16,1,0.3,1)]"
-                  style={{ transform: `translateX(calc(${TABS.findIndex((t) => t.id === tab)} * (100% + 0.25rem)))` }}
+                  className="kryo-pill absolute inset-y-1 left-1 bg-primary transition-transform duration-300 ease-[cubic-bezier(0.16,1,0.3,1)]"
+                  style={{ width: `calc((100% - ${0.5 + 0.25 * (TABS.length - 1)}rem) / ${TABS.length})`, transform: `translateX(calc(${TABS.findIndex((t) => t.id === tab)} * (100% + 0.25rem)))` }}
                 />
                 {TABS.map((t) => (
                   <button
@@ -300,12 +407,16 @@ export function App() {
                     aria-current={tab === t.id ? 'page' : undefined}
                     onClick={() => openTab(t.id)}
                     className={cn(
-                      'kryo-pill relative z-10 flex h-10 items-center justify-center gap-1.5 text-[11px] font-bold uppercase tracking-[0.2em] transition-colors duration-300',
+                      'kryo-pill relative z-10 flex h-10 items-center justify-center gap-1.5 font-bold uppercase transition-colors duration-300',
+                      TABS.length > 3 ? 'text-[10px] tracking-wider' : 'text-[11px] tracking-[0.2em]',
                       tab === t.id ? 'text-primary-foreground' : 'text-muted-foreground',
                     )}
                   >
                     {t.icon}
                     {t.label}
+                    {t.id === 'chats' && chatUnread ? (
+                      <span className="kryo-pill grid h-4 min-w-4 place-items-center bg-destructive px-1 text-[9px] tabular-nums tracking-normal text-destructive-foreground">{chatUnread > 99 ? '99+' : chatUnread}</span>
+                    ) : null}
                   </button>
                 ))}
               </div>
@@ -324,10 +435,9 @@ export function App() {
             }}
           />
         ) : null}
-        <Toast message={message} />
+        <Toast message={message} onDone={dismissToast} />
         {phase === 'main' ? <UpdatePrompt /> : null}
       </main>
-      </ChatProvider>
     </AppContextProvider.Provider>
   )
 }
@@ -481,7 +591,7 @@ function SignIn({ onToken, onCancel }: { onToken: (token: string) => void; onCan
       <div className="mx-auto grid w-full max-w-sm gap-4 px-5 pt-2">
         {error ? (
           <div className="grid justify-items-center gap-4 py-16 text-center">
-            <p className="max-w-xs text-xs leading-relaxed text-destructive">{error}</p>
+            <Note className="max-w-xs text-destructive">{error}</Note>
             <div className="flex gap-2">
               <Button
                 variant="primary"
@@ -502,28 +612,26 @@ function SignIn({ onToken, onCancel }: { onToken: (token: string) => void; onCan
           </div>
         ) : (
           <>
-            <section className="kryo-radius grid gap-3 border border-border bg-card p-4">
-              <Caption className="font-bold text-foreground/80">On this phone</Caption>
-              <p className="text-xs leading-relaxed text-muted-foreground">Signed in to kryo.to in your browser? Open it, check the code matches and approve.</p>
+            <Block title="On this phone">
+              <Note>Signed in to kryo.to in your browser? Open it, check the code matches and approve.</Note>
               <Button variant="primary" size="lg" onClick={() => void openExternal(start.verification_uri_complete)}>
                 Open kryo.to
               </Button>
-            </section>
+            </Block>
 
-            <section className="kryo-radius grid justify-items-center gap-3 border border-border bg-card p-4 text-center">
-              <Caption className="justify-self-start font-bold text-foreground/80">From another device</Caption>
-              <div className="kryo-radius w-48 overflow-hidden bg-white p-1.5 [&>svg]:block [&>svg]:h-auto [&>svg]:w-full" aria-label="QR code for this sign-in">
+            <Block title="From another device" className="justify-items-center text-center">
+              <div className="kryo-radius w-48 overflow-hidden bg-white p-1.5" aria-label="QR code for this sign-in">
                 {qr ? <div className="[&>svg]:block [&>svg]:h-auto [&>svg]:w-full" dangerouslySetInnerHTML={{ __html: qr }} /> : <div className="aspect-square" />}
               </div>
-              <p className="max-w-xs text-xs leading-relaxed text-muted-foreground">Scan it with a phone or tablet signed in to kryo.to. On a computer, go to {site} and enter:</p>
+              <Note className="max-w-xs">Scan it with a phone or tablet signed in to kryo.to. On a computer, go to {site} and enter:</Note>
               <button type="button" onClick={copy} className="kryo-pill flex items-center gap-2 border border-border px-4 py-2" aria-label="Copy the code">
                 <span className="kryo-ascii-art select-text text-2xl font-bold tracking-[0.2em] text-foreground">{groupCode(start.user_code)}</span>
                 {copied ? <Check className="size-4 text-success" /> : <Copy className="size-4 text-muted-foreground" />}
               </button>
               <Caption className="tabular-nums">
-                {left > 0 ? `Expires in ${Math.floor(left / 60)}:${String(left % 60).padStart(2, '0')}` : 'Getting a new code'}
+                {left > 0 ? `Expires in ${clock(left)}` : 'Getting a new code'}
               </Caption>
-            </section>
+            </Block>
 
             <div className="grid justify-items-center gap-2 pt-2" role="status">
               <AsciiBar fraction={null} cells={16} showPct={false} className="text-muted-foreground" />

@@ -1,9 +1,10 @@
 import { useEffect, useState } from 'react'
-import { Search, X } from 'lucide-react'
+import { Search, X } from '@/ui/pixel-icons'
 import { Caption, inputCls } from '@/ui'
 import { cn } from '@/lib/utils'
 import { search, type Suggestion } from '@/mobile/catalog'
 import { Browse } from '@/mobile/Browse'
+import { useHideAdult, withoutAdult } from '@/mobile/adult'
 import { useApp } from '@/mobile/context'
 import { Busy, Notice, Poster, TopInset } from '@/mobile/parts'
 
@@ -14,6 +15,8 @@ export function Store() {
   return (
     <div className="flex min-h-full flex-col">
       <TopInset />
+      {/* Opaque, not glass: a blurred header over the scrolling grid redrew the
+          blur every frame of a swipe (janky frames 5% -> 8% in the 0.17 pass). */}
       <header className="sticky top-[var(--sat)] z-30 border-b border-border bg-background px-4 pb-3 pt-3">
         <div className="relative">
           <Search className="pointer-events-none absolute left-3.5 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground" />
@@ -41,8 +44,11 @@ export function Store() {
 /** The games for what was typed, 250 ms after the last keystroke, the most played first. */
 function SearchResults({ q }: { q: string }) {
   const { push, fail } = useApp()
-  const [results, setResults] = useState<Suggestion[] | null>(null)
+  const [found, setResults] = useState<Suggestion[] | null>(null)
+  const hideAdult = useHideAdult()
+  const results = found && withoutAdult(found, hideAdult)
   const [error, setError] = useState<string | null>(null)
+  const [attempt, setAttempt] = useState(0)
   useEffect(() => {
     let current = true
     setResults(null)
@@ -56,8 +62,8 @@ function SearchResults({ q }: { q: string }) {
       current = false
       window.clearTimeout(t)
     }
-  }, [q, fail])
-  if (error) return <Notice title="Search failed" body={error} />
+  }, [q, fail, attempt])
+  if (error) return <Notice title="Search failed" body={error} retry={() => setAttempt((n) => n + 1)} />
   if (!results) return <Busy />
   if (!results.length) return <Notice title="No games found" body={`Nothing on kryo.to matches "${q}".`} />
   return (

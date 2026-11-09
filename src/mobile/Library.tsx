@@ -1,18 +1,21 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { ArrowDownUp, ArrowLeft, Bell, ChevronRight, Hammer, LayoutGrid, List, Monitor, Play, ScanLine, Search, Square, Trash2 } from 'lucide-react'
-import { Button, Caption, inputCls } from '@/ui'
+import { PixelSplash } from '@/ui/pixel-icons-motion'
+import { ArrowDownUp, ArrowLeft, ChevronRight, Download, EyeOff, Gamepad2, Hammer, LayoutGrid, List, Monitor, ScanLine, Search, Trash2 } from '@/ui/pixel-icons'
+import { Button, Caption, Stat, Tag, inputCls } from '@/ui'
 import { cn } from '@/lib/utils'
 import { isTauri } from '@/lib/bridge'
 import { formatLastPlayed, formatPlaytime } from '@/lib/format'
-import { game as loadGame } from '@/mobile/catalog'
+import { formatBytes } from '@/lib/downloads'
+import { downloadSizes, game as loadGame } from '@/mobile/catalog'
 import { useApp } from '@/mobile/context'
 import { API, openExternal } from '@/mobile/auth'
 import { accountMachines, atLeast, pairFromQr, pairLan, PHONE_SERVER_VERSION, RemoteOff, type AccountMachine } from '@/mobile/link'
 import { RemoteConsentCard } from '@/mobile/remote'
-import { Busy, Notice, PageHeader, Poster, Sheet, SheetRow, TopInset } from '@/mobile/parts'
+import { clock } from '@/mobile/format'
+import { Block, Busy, Note, Notice, PageHeader, PlayButton, Poster, Sheet, SheetRow, TopInset } from '@/mobile/parts'
 import { Downloads, openCount } from '@/mobile/Downloads'
 import { AchievementsCard } from '@/mobile/Achievements'
-import { DownloadsIcon, GamesIcon } from '@/mobile/icons'
+import { Writeups } from '@/mobile/game-sections'
 import { store, type SortMode, type ViewMode } from '@/mobile/storage'
 import { ScanCancelled, scanQr } from '@/mobile/scan'
 import type { PhoneGame } from '@/mobile/types'
@@ -23,9 +26,11 @@ const SORT_LABEL: Record<SortMode, string> = {
   recent: 'Recently played',
   playtime: 'Most played',
   added: 'Recently added',
+  size: 'Largest first',
 }
 
-function sorted(games: PhoneGame[], mode: SortMode): PhoneGame[] {
+function sorted(games: PhoneGame[], mode: SortMode, sizes: Map<string, number>): PhoneGame[] {
+  const size = (g: PhoneGame) => (g.slug ? sizes.get(g.slug) ?? 0 : 0)
   const list = [...games]
   switch (mode) {
     case 'alpha':
@@ -36,30 +41,54 @@ function sorted(games: PhoneGame[], mode: SortMode): PhoneGame[] {
       return list.sort((a, b) => b.playtimeSeconds - a.playtimeSeconds || a.title.localeCompare(b.title))
     case 'added':
       return list.sort((a, b) => b.addedAt - a.addedAt || a.title.localeCompare(b.title))
+    case 'size':
+      // kryo.to's download size: a game it does not list has none and goes last.
+      return list.sort((a, b) => size(b) - size(a) || a.title.localeCompare(b.title))
   }
 }
 
 /** Library: the games on the linked PC, started and stopped from here. */
 export function Library({ downloadsRequest = 0 }: { downloadsRequest?: number } = {}) {
-  const { link, push } = useApp()
-  const { snapshot, state, lastSeen, route, starting, play, stop } = link
+  const { link, links, push } = useApp()
+  const { snapshot, state, lastSeen, route, asked, starting, play, stop } = link
   const [view, setView] = useState<ViewMode>(store.view)
   const [sort, setSort] = useState<SortMode>(store.sort)
   const [sheet, setSheet] = useState(false)
   const [filter, setFilter] = useState('')
+  const [hiddenOpen, setHiddenOpen] = useState(false)
   const [section, setSection] = useState<'games' | 'downloads'>(downloadsRequest ? 'downloads' : 'games')
   useEffect(() => {
     if (downloadsRequest) setSection('downloads')
   }, [downloadsRequest])
-  const [manage, setManage] = useState(false)
-  const [removing, setRemoving] = useState<PhoneGame | null>(null)
+
+  const [sizes, setSizes] = useState<Map<string, number>>(() => new Map())
+  const slugs = (snapshot?.games ?? []).flatMap((g) => (g.slug ? [g.slug] : [])).sort().join(',')
+  useEffect(() => {
+    if (sort !== 'size' || !slugs) return
+    let current = true
+    downloadSizes(slugs.split(','))
+      .then((found) => current && setSizes(found))
+      .catch(() => {})
+    return () => {
+      current = false
+    }
+  }, [sort, slugs])
 
   const running = useMemo(() => new Set(snapshot?.running ?? []), [snapshot])
   const shown = useMemo(() => {
     const f = filter.trim().toLowerCase()
     const all = snapshot?.games ?? []
-    return sorted(f ? all.filter((g) => g.title.toLowerCase().includes(f)) : all, sort)
-  }, [snapshot, filter, sort])
+    // The games hidden on the PC keep to their own list; a search looks in everything, as there.
+    return sorted(f ? all.filter((g) => g.title.toLowerCase().includes(f)) : all.filter((g) => !!g.hidden === hiddenOpen), sort, sizes)
+  }, [snapshot, filter, hiddenOpen, sort, sizes])
+  const hiddenCount = (snapshot?.games ?? []).filter((g) => g.hidden).length
+  useEffect(() => {
+    if (hiddenCount === 0) setHiddenOpen(false)
+  }, [hiddenCount])
+  const sizeOf = (g: PhoneGame) => {
+    const bytes = sort === 'size' && g.slug ? sizes.get(g.slug) : undefined
+    return bytes ? <Caption>{formatBytes(bytes)}</Caption> : null
+  }
 
   if (state === 'unlinked' || !snapshot) {
     return (
@@ -68,16 +97,14 @@ export function Library({ downloadsRequest = 0 }: { downloadsRequest?: number } 
         <div className="grid gap-4 px-4 py-6">
           {state === 'unlinked' ? (
             <Connect />
+          ) : !asked ? (
+            <Busy label="Reaching your PC" />
           ) : (
-            <>
-              <Busy label="Reaching your PC" />
-              <p className="text-center text-[11px] leading-relaxed text-muted-foreground">Make sure the PC is on and Kryoto is open.</p>
-              <div className="flex justify-center">
-                <Button size="sm" onClick={() => push({ kind: 'connect' })}>
-                  Change connection
-                </Button>
-              </div>
-            </>
+            <Notice title={`Can't reach ${links.lan?.name || links.relay?.name || 'your PC'}`} body="Make sure the PC is on and Kryoto is open.">
+              <Button size="sm" onClick={() => push({ kind: 'connect' })}>
+                Change connection
+              </Button>
+            </Notice>
           )}
         </div>
       </div>
@@ -99,18 +126,18 @@ export function Library({ downloadsRequest = 0 }: { downloadsRequest?: number } 
   return (
     <div className="flex min-h-full flex-col">
       <TopInset />
+      {/* Opaque, like the Store's: a blurred sticky header costs every scrolled frame. */}
       <header className="sticky top-[var(--sat)] z-30 grid gap-2.5 border-b border-border bg-background px-4 pb-3 pt-3">
         <div className="flex items-center gap-2">
           <div className="grid grow">
             <span className="text-xs font-bold uppercase tracking-[0.2em] text-foreground">Library</span>
             <Caption>
-              {snapshot.games.length} {snapshot.games.length === 1 ? 'game' : 'games'} on {snapshot.name}
+              {snapshot.games.length - hiddenCount} {snapshot.games.length - hiddenCount === 1 ? 'game' : 'games'} on {snapshot.name}
               {state === 'live' && route ? (
                 <span className="text-muted-foreground"> · {route === 'lan' ? 'local' : 'remote'}</span>
               ) : null}
             </Caption>
           </div>
-          <Button size="sm" aria-label="Notifications and updates" onClick={() => push({ kind: 'notifications' })}><Bell className="size-4" /></Button>
           {games ? (
             <>
               <Button size="sm" onClick={() => setSheet(true)} aria-label="Sort">
@@ -144,26 +171,15 @@ export function Library({ downloadsRequest = 0 }: { downloadsRequest?: number } 
                 section === s ? 'm-tab-on text-primary-foreground' : 'text-muted-foreground',
               )}
             >
-              {s === 'games' ? <GamesIcon className="size-3.5" /> : <DownloadsIcon className={cn('size-3.5', downloading && section !== s && 'm-working')} />}
+              {s === 'games' ? <Gamepad2 className="size-3.5" /> : <Download className={cn('size-3.5', downloading && section !== s && 'm-working')} />}
               {s === 'games' ? 'Games' : `Downloads${downloading ? ` (${downloading})` : ''}`}
             </button>
           ))}
         </div>
         {games ? (
-          <div className="flex gap-2">
-            <div className="relative grow">
-              <Search className="pointer-events-none absolute left-3.5 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground" />
-              <input value={filter} onChange={(e) => setFilter(e.target.value)} placeholder="Filter this library" className={cn(inputCls, 'h-10 pl-9')} />
-            </div>
-            <button
-              type="button"
-              aria-label={manage ? 'Done managing' : 'Manage games'}
-              aria-pressed={manage}
-              onClick={() => setManage(!manage)}
-              className={cn('kryo-pill grid size-10 shrink-0 place-items-center border transition-colors', manage ? 'border-destructive bg-destructive text-destructive-foreground' : 'border-border text-muted-foreground')}
-            >
-              <Trash2 className="size-4" />
-            </button>
+          <div className="relative">
+            <Search className="pointer-events-none absolute left-3.5 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground" />
+            <input value={filter} onChange={(e) => setFilter(e.target.value)} placeholder="Filter this library" className={cn(inputCls, 'h-10 pl-9')} />
           </div>
         ) : null}
       </header>
@@ -182,25 +198,15 @@ export function Library({ downloadsRequest = 0 }: { downloadsRequest?: number } 
         ) : view === 'grid' ? (
           <ul className="grid grid-cols-2 gap-3">
             {shown.map((g) => (
-              <li key={g.id} className="relative">
+              <li key={g.id}>
                 <button type="button" onClick={() => push({ kind: 'lib', id: g.id })} className="grid w-full gap-1.5 text-left">
                   <div className="relative">
                     <Poster src={g.cover} title={g.title} nsfw={g.nsfw} />
                     {running.has(g.id) ? <span aria-label="Running" className="m-live absolute right-2 top-2 size-2.5 rounded-full bg-success shadow shadow-black/60" /> : null}
                   </div>
                   <span className="truncate text-xs font-bold text-foreground">{g.title}</span>
+                  {sizeOf(g)}
                 </button>
-                {manage ? (
-                  <button
-                    type="button"
-                    aria-label={`Remove ${g.title}`}
-                    disabled={state === 'offline' || running.has(g.id)}
-                    onClick={() => setRemoving(g)}
-                    className="kryo-pop absolute left-2 top-2 grid size-9 place-items-center rounded-full bg-destructive text-destructive-foreground shadow-lg shadow-black/60 disabled:opacity-40"
-                  >
-                    <Trash2 className="size-4" />
-                  </button>
-                ) : null}
               </li>
             ))}
           </ul>
@@ -217,20 +223,20 @@ export function Library({ downloadsRequest = 0 }: { downloadsRequest?: number } 
                     </span>
                     <Caption>{formatPlaytime(g.playtimeSeconds)}</Caption>
                     <Caption>{formatLastPlayed(g.lastPlayed)}</Caption>
+                    {sizeOf(g)}
                   </span>
                 </button>
-                {manage ? (
-                  <Button size="sm" variant="danger" disabled={state === 'offline' || running.has(g.id)} onClick={() => setRemoving(g)}>
-                    <Trash2 className="size-3" />
-                    Remove
-                  </Button>
-                ) : (
-                  <PlayButton game={g} running={running.has(g.id)} starting={starting.has(g.id)} offline={state === 'offline'} play={play} stop={stop} size="sm" />
-                )}
+                <PlayButton running={running.has(g.id)} starting={starting.has(g.id)} offline={state === 'offline'} onPlay={() => void play(g.id)} onStop={() => void stop(g.id)} size="sm" />
               </li>
             ))}
           </ul>
         )}
+        {games && hiddenCount > 0 && !filter ? (
+          <button type="button" onClick={() => setHiddenOpen((v) => !v)} className="kryo-pill mt-4 flex h-9 w-full items-center justify-center gap-1.5 text-[11px] uppercase tracking-wider text-muted-foreground">
+            <EyeOff className="size-3.5" aria-hidden />
+            {hiddenOpen ? 'Back to your games' : `Hidden (${hiddenCount})`}
+          </button>
+        ) : null}
       </div>
 
       <Sheet open={sheet} onClose={() => setSheet(false)} title="Sort by">
@@ -240,13 +246,12 @@ export function Library({ downloadsRequest = 0 }: { downloadsRequest?: number } 
           </SheetRow>
         ))}
       </Sheet>
-      <RemoveSheet game={removing} onClose={() => setRemoving(null)} />
     </div>
   )
 }
 
 /** Ask how a game leaves the PC's library: uninstalled, or only taken off the list. */
-function RemoveSheet({ game, onClose, onDone }: { game: PhoneGame | null; onClose(): void; onDone?(): void }) {
+function RemoveSheet({ game, onClose, onDone }: { game: PhoneGame | null; onClose(): void; onDone(): void }) {
   const { link } = useApp()
   const [busy, setBusy] = useState(false)
   const go = async (deleteFiles: boolean) => {
@@ -255,11 +260,11 @@ function RemoveSheet({ game, onClose, onDone }: { game: PhoneGame | null; onClos
     const ok = await link.removeGame(game, deleteFiles)
     setBusy(false)
     onClose()
-    if (ok) onDone?.()
+    if (ok) onDone()
   }
   return (
     <Sheet open={!!game} onClose={onClose} title={game ? `Remove ${game.title}?` : 'Remove'}>
-      <p className="px-1 pb-2 text-xs leading-relaxed text-muted-foreground">Uninstalling deletes the game's files from the PC. Removing it from the library only takes it off the list.</p>
+      <Note className="px-1 pb-2">Uninstalling deletes the game's files from the PC. Removing it from the library only takes it off the list.</Note>
       <SheetRow danger onClick={() => void go(true)}>
         Uninstall and delete files
       </SheetRow>
@@ -268,39 +273,6 @@ function RemoveSheet({ game, onClose, onDone }: { game: PhoneGame | null; onClos
         Keep it
       </SheetRow>
     </Sheet>
-  )
-}
-
-function PlayButton({
-  game,
-  running,
-  starting,
-  offline,
-  play,
-  stop,
-  size = 'md',
-}: {
-  game: PhoneGame
-  running: boolean
-  starting: boolean
-  offline: boolean
-  play(id: string): Promise<void>
-  stop(id: string): Promise<void>
-  size?: 'sm' | 'md' | 'lg'
-}) {
-  if (running) {
-    return (
-      <Button size={size} variant="danger" disabled={offline} onClick={() => void stop(game.id)}>
-        <Square className="size-3" />
-        Stop
-      </Button>
-    )
-  }
-  return (
-    <Button size={size} variant="primary" disabled={offline || starting} onClick={() => void play(game.id)}>
-      <Play className="size-3" />
-      {starting ? 'Starting...' : 'Play'}
-    </Button>
   )
 }
 
@@ -315,13 +287,6 @@ function useSessionSeconds(running: boolean, startedUnix: number | null): number
   }, [running])
   // A phone clock a little behind the PC's would give a negative time.
   return running && startedUnix ? Math.max(0, Math.floor(now / 1000 - startedUnix)) : 0
-}
-
-function formatClock(seconds: number): string {
-  const h = Math.floor(seconds / 3600)
-  const m = Math.floor((seconds % 3600) / 60)
-  const s = String(seconds % 60).padStart(2, '0')
-  return h ? `${h}:${String(m).padStart(2, '0')}:${s}` : `${m}:${s}`
 }
 
 /** A game on the PC: art, stats, and Play or Stop. */
@@ -363,7 +328,7 @@ export function LibraryGamePage({ id }: { id: string }) {
         <div className="grid gap-4 px-4">
           <div className="flex items-center gap-2">
             <h2 className="min-w-0 grow text-lg font-bold leading-tight text-foreground">{game.title}</h2>
-            {running ? <span className="kryo-pill shrink-0 border border-success/50 px-2.5 py-1 text-[10px] uppercase tracking-wider text-success tabular-nums">Running{session ? ` · ${formatClock(session)}` : ''}</span> : null}
+            {running ? <Tag className="border-success/50 tabular-nums text-success">Running{session ? ` · ${clock(session)}` : ''}</Tag> : null}
           </div>
           <dl className="grid grid-cols-3 gap-2">
             <Stat label="Played" value={formatPlaytime(game.playtimeSeconds + session)} />
@@ -371,33 +336,22 @@ export function LibraryGamePage({ id }: { id: string }) {
             <Stat label="Added" value={game.addedAt ? new Date(game.addedAt * 1000).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' }) : 'Unknown'} />
           </dl>
           <div className="grid gap-1.5">
-            <PlayButton game={game} running={running} starting={starting.has(id)} offline={offline} play={play} stop={stop} size="lg" />
+            <PlayButton running={running} starting={starting.has(id)} offline={offline} onPlay={() => void play(id)} onStop={() => void stop(id)} size="lg" />
             {offline ? <Caption className="text-center">PC is offline</Caption> : null}
           </div>
           <AchievementsCard id={id} />
-          <div className="kryo-radius grid gap-3 border border-border bg-card p-4">
-            <Caption className="font-bold text-foreground/80">Manage</Caption>
-            <p className="text-xs leading-relaxed text-muted-foreground">
-              Uninstall deletes {game.title} from {snapshot?.name ?? 'the PC'}. Remove only takes it off the library list and keeps its files.
-            </p>
+          {/* What players thought, with their reactions: the game page's section, its two most helpful. */}
+          {game.slug ? <Writeups slug={game.slug} version={null} limit={2} /> : null}
+          <Block title="Manage">
             <Button variant="danger" disabled={offline || running} onClick={() => setRemoving(true)}>
               <Trash2 className="size-3.5" />
               Uninstall or remove
             </Button>
-            {running ? <Caption>Stop the game first.</Caption> : null}
-          </div>
+            {running ? <Note>Stop the game first.</Note> : null}
+          </Block>
           <RemoveSheet game={removing ? game : null} onClose={() => setRemoving(false)} onDone={back} />
         </div>
       </div>
-    </div>
-  )
-}
-
-function Stat({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="kryo-radius grid gap-1 border border-border bg-card p-3">
-      <dt className="text-[10px] uppercase tracking-wider text-muted-foreground">{label}</dt>
-      <dd className="text-xs font-bold text-foreground">{value}</dd>
     </div>
   )
 }
@@ -413,6 +367,7 @@ export function Connect({ onDone }: { onDone?: () => void }) {
   const [error, setError] = useState<string | null>(null)
   const [machine, setMachine] = useState<AccountMachine | null>(null)
   const hostField = useRef<HTMLInputElement | null>(null)
+  const portField = useRef<HTMLInputElement | null>(null)
 
   const pair = async () => {
     setPairing(true)
@@ -446,34 +401,40 @@ export function Connect({ onDone }: { onDone?: () => void }) {
 
   return (
     <div className="grid gap-4">
-      <div className="grid gap-1 text-center">
+      <div className="grid justify-items-center gap-1 text-center">
+        <PixelSplash icon="MonitorSmartphone" className="mb-1 size-20 text-foreground" />
         <p className="text-sm font-bold text-foreground">Connect to your PC</p>
-        <p className="mx-auto max-w-xs text-xs leading-relaxed text-muted-foreground">Turn on Phone in Kryoto Desktop's Settings, then link it here.</p>
+        <Note className="mx-auto max-w-xs">In Kryoto Desktop, open Settings, then Phone, and turn on On this network. It shows the code, and the address and port to enter by hand.</Note>
       </div>
-      {error ? <p className="kryo-radius border border-destructive/50 px-3 py-2 text-xs leading-relaxed text-destructive">{error}</p> : null}
-      {error && isTauri() ? <Button onClick={() => void mobileAction('settings', { section: 'network' }).catch((e: unknown) => toast(String(e)))}>Open Android app permissions</Button> : null}
+      {error ? <Note className="text-destructive">{error}</Note> : null}
+      {error && isTauri() && /local network/i.test(error) ? <Button onClick={() => void mobileAction('settings', { section: 'network' }).catch((e: unknown) => toast(fail(e)))}>Open Android app permissions</Button> : null}
       {!manual && isTauri() ? (
-        <section className="kryo-radius grid gap-3 border border-border bg-card p-4">
-          <Caption className="font-bold text-foreground/80">Scan a QR code</Caption>
-          <p className="text-xs leading-relaxed text-muted-foreground">On the PC, open Kryoto Desktop's Settings, then Phone, turn on "On this network", and scan the code it shows.</p>
-          <Button variant="primary" disabled={pairing} onClick={() => void scanAndPair()}>
-            <ScanLine className="size-4" />
-            {pairing ? 'Pairing...' : 'Scan QR code'}
-          </Button>
-        </section>
+        <Button variant="primary" size="lg" disabled={pairing} onClick={() => void scanAndPair()}>
+          <ScanLine className="size-4" />
+          {pairing ? 'Pairing...' : 'Scan QR code'}
+        </Button>
       ) : null}
       <Button onClick={() => setManual(!manual)} aria-expanded={manual}>
         {manual ? <ArrowLeft className="size-4" /> : <ChevronRight className="size-4" />}
         {manual ? 'Back to QR code' : 'Enter details manually'}
       </Button>
-      {manual ? <section className="kryo-slide kryo-radius grid gap-3 border border-border bg-card p-4" style={{ '--kryo-slide': '40px' } as React.CSSProperties}>
-        <Caption className="font-bold text-foreground/80">Enter it by hand</Caption>
+      {manual ? <Block title="Enter it by hand" className="kryo-slide">
         <label className="grid gap-1">
           <Caption>PC address</Caption>
           <input
             ref={hostField}
             value={host}
-            onChange={(e) => setHost(e.target.value.replace(/[^\d.]/g, ''))}
+            onChange={(e) => {
+              // The PC shows them as 192.168.1.5:47821: pasted whole, the port goes in its own box.
+              const [address = '', typedPort] = e.target.value.split(':')
+              setHost(address.replace(/[^\d.]/g, ''))
+              if (typedPort) setPort(typedPort.replace(/\D/g, '').slice(0, 5))
+              else if (typedPort === '') {
+                // On to the port, its old number selected so what is typed replaces it.
+                portField.current?.focus()
+                portField.current?.select()
+              }
+            }}
             placeholder="192.168.1.5"
             inputMode="decimal"
             autoCapitalize="off"
@@ -484,6 +445,7 @@ export function Connect({ onDone }: { onDone?: () => void }) {
         <label className="grid gap-1">
           <Caption>Port</Caption>
           <input
+            ref={portField}
             value={port}
             onChange={(e) => setPort(e.target.value.replace(/\D/g, '').slice(0, 5))}
             placeholder="47821"
@@ -501,13 +463,11 @@ export function Connect({ onDone }: { onDone?: () => void }) {
             className={inputCls}
           />
         </label>
-        <p className="text-[11px] leading-relaxed text-muted-foreground">The PC shows its address, port and code in Settings, then Phone.</p>
         <Button disabled={pairing || code.length !== 6 || !host.trim() || !port.trim()} onClick={() => void pair()}>
           {pairing ? 'Pairing...' : 'Pair'}
         </Button>
-      </section> : null}
-      <section className="kryo-radius grid gap-3 border border-border bg-card p-4">
-        <Caption className="font-bold text-foreground/80">My Kryoto devices</Caption>
+      </Block> : null}
+      <Block title="My Kryoto devices">
         {signedIn && token ? (
           <Machines
             token={token}
@@ -520,11 +480,11 @@ export function Connect({ onDone }: { onDone?: () => void }) {
           />
         ) : (
           <>
-            <p className="text-xs leading-relaxed text-muted-foreground">Sign in to see the PCs on your account.</p>
+            <Note>Sign in to see the PCs on your account.</Note>
             <Button onClick={signIn}>Sign in with kryo.to</Button>
           </>
         )}
-      </section>
+      </Block>
       <MachineSheet
         machine={machine}
         onClose={() => setMachine(null)}
@@ -557,9 +517,7 @@ function MachineSheet({ machine, onClose, onScan, onType }: { machine: AccountMa
     <Sheet open={!!machine} onClose={onClose} title={machine ? `${machine.name} is not compatible` : 'Not compatible'}>
       {machine?.kind === 'forge' ? (
         <>
-          <p className="px-1 pb-2 text-xs leading-relaxed text-muted-foreground">
-            This is a Kryoto Forge machine. It builds games for kryo.to and has no library to play from, so the phone cannot connect to it. Watch and control its builds on kryo.to instead.
-          </p>
+          <Note className="px-1 pb-2">This is a Kryoto Forge machine. It builds games for kryo.to and has no library to play from, so the phone cannot connect to it. Watch and control its builds on kryo.to instead.</Note>
           <SheetRow active onClick={() => visit('/remote?mode=forge')}>
             Open Forge remote
           </SheetRow>
@@ -567,12 +525,12 @@ function MachineSheet({ machine, onClose, onScan, onType }: { machine: AccountMa
         </>
       ) : machine ? (
         <>
-          <p className="px-1 pb-2 text-xs leading-relaxed text-muted-foreground">
+          <Note className="px-1 pb-2">
             Kryoto Desktop on this PC tells kryo.to about its downloads, but the phone can't open its library through kryo.to yet. Connect on the PC's Wi-Fi instead.
             {old
               ? ` It runs version ${machine.version || 'unknown'}: update Kryoto Desktop to ${PHONE_SERVER_VERSION} or later, then turn on Settings > Phone > On this network.`
               : ' On the PC, open Settings > Phone and turn on On this network.'}
-          </p>
+          </Note>
           {onScan ? (
             <SheetRow active onClick={onScan}>
               Scan its QR code
@@ -612,7 +570,7 @@ function Machines({ token, onPick, fail }: { token: string; onPick(m: AccountMac
   if (!on) return <RemoteConsentCard />
   if (error) return <Notice title="Could not list your PCs" body={error} retry={load} />
   if (!machines) return <Busy />
-  if (!machines.length) return <p className="text-xs leading-relaxed text-muted-foreground">No PC on this account yet. Sign in to kryo.to in Kryoto Desktop and it shows up here.</p>
+  if (!machines.length) return <Note>No PC on this account yet. Sign in to kryo.to in Kryoto Desktop and it shows up here.</Note>
   return (
     <ul className="grid gap-2">
       {machines.map((m) => (
@@ -626,13 +584,7 @@ function Machines({ token, onPick, fail }: { token: string; onPick(m: AccountMac
                 {m.version ? ` ${m.version}` : ''} · {m.online ? 'Online' : 'Offline'}
               </span>
             </span>
-            {m.reachable ? (
-              <span className={cn('kryo-pill shrink-0 border px-2.5 py-1 text-[10px] uppercase tracking-wider', m.online ? 'border-success/50 text-success' : 'border-border text-muted-foreground')}>
-                {m.online ? 'Online' : 'Offline'}
-              </span>
-            ) : (
-              <span className="kryo-pill shrink-0 border border-destructive/50 px-2.5 py-1 text-[10px] uppercase tracking-wider text-destructive">Incompatible</span>
-            )}
+            {m.reachable ? null : <Tag className="border-destructive/50 text-destructive">Incompatible</Tag>}
           </button>
         </li>
       ))}

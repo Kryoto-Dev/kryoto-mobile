@@ -13,6 +13,8 @@ export type PhoneGame = {
   lastPlayed: number | null
   addedAt: number
   nsfw: boolean
+  /** In the Library's Hidden group on the PC. Absent from an older PC. */
+  hidden?: boolean
 }
 
 /** One achievement of a PC game (phone.rs, `PhoneAchievement`). `icon` is an https URL; `unlockedAt` is unix seconds. */
@@ -87,4 +89,6 @@ export type PhoneLook = {
   font: string
   season: string | null
   reducedMotion: boolean
+  /** Classic line icons instead of Kryoto's pixel ones, as the PC has them. Missing from older PCs. */
+  classicIcons?: boolean
 }

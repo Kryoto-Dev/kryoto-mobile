@@ -12,7 +12,7 @@ Settings > Phone in Desktop and scan its QR code, or choose Manual and enter the
 New QR codes also connect through kryo.to when both devices are signed in to the same account.
 Desktop must include the phone server (`src-tauri/src/phone.rs`, `/v1/...` routes).
 
-The app includes the catalog, requests, achievements and your kryo.to profile. Downloads started
+The app includes the catalog, achievements, friends and chat, and your kryo.to profile. Downloads started
 on the phone complete kryo.to's Cloudflare check there and pass the result to the PC; if that
 fails, Desktop opens the game's page for you to press Download.
 
@@ -38,6 +38,8 @@ Release builds strip Rust symbols; use `pnpm android:build --debug` for a debug 
 |---|---|
 | `src/mobile/` | the UI: store, library, downloads, achievements, profile and PC connection |
 | `src/ui/`, `src/lib/`, `src/boot/`, `src/hooks/` | components shared with Desktop, listed in `shared.json` |
+| `src/rich/` | rich text: the parser from kryo.to, the editor and renderer from Desktop |
+| `src/friends/`, `src/web/` | friends and chat, shared with Desktop; the engine is km-core in WebAssembly, in the app itself. `src/web/api.ts`, `src/web/embed.ts` and `src/web/pkg/` are Mobile's own (the last a copy of Desktop's `pnpm web:wasm` output) |
 | `src/lib/preview.ts`, `src/styles.css` | Mobile's own preview data and styles |
 | `mobile/src-tauri/` | the Tauri Android shell (native requests, QR scanning) |
 | `scripts/shared.mjs` | check and sync the files shared with Desktop |
@@ -83,10 +85,14 @@ one uninstall/reinstall; later stable releases keep the same key and install in 
 
 ## Android notifications
 
-Profile > Notifications & updates contains only this app's notification choices, plus a
-shortcut to Android's notification permissions. All types start off. Enable download
+Profile > Notifications & updates lists the account's notifications, then this app's own
+choices and a shortcut to Android's notification permissions. All types start off. Enable download
 completion/failure, request progress, community replies, news or account alerts separately.
 These choices do not change website, email or Discord preferences.
+
+Chat messages are the one choice on from the start. With the app closed the gateway's
+`/v1/push/waiting` is checked by the same background job and the notice says only that something
+is waiting. Calls cannot ring a closed app.
 
 Native WorkManager checks continue after the WebView closes, about every 15 minutes (Android
 may delay them to save power). Optional Follow active downloads starts a visible foreground

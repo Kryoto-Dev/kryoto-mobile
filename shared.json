@@ -1,6 +1,6 @@
 {
   "source": "https://github.com/Kryoto-Dev/kryoto-desktop.git",
-  "ref": "b8ef1f847f69efbe24fd759481f930c023bb4c6d",
+  "ref": "88d79511f0becafd434eb1b6d955bed8b0d734ef",
   "worktree": [
     "env.d.ts",
     "boot/SplashScene.tsx",
@@ -114,11 +114,11 @@
     "boot/SplashScene.tsx": "69e2ef4232de7a02d9287d169386d9c7d06cd1315a9c16831efa327c63096392",
     "friends/AddFriendDialog.tsx": "09295f3b4e4df56fd869659d6a02b18de91e41bc543301d564eea7389223ce58",
     "friends/CallOverlay.tsx": "e799d082206fa4ae3d52d96bbb0d41f11b83aaf1e9bb528c94ee9fcb663380c5",
-    "friends/ChatPane.tsx": "5c8d6d58f7e886fde9015cfa5842d83fb01c0ccaedd479927b2d4352a34115e3",
+    "friends/ChatPane.tsx": "e61e686f79ad55dbb5ba68d641a028033fa864b18addd4246892c4a741cbeceb",
     "friends/ChatSecurity.tsx": "e87b26f064adc8a19847ff8740b717ffa01a686178ed677d38595f0521cfc609",
     "friends/ChatSettings.tsx": "32432e016116b260a5900c5b1763100765800522761b9e07930b339408b8466b",
-    "friends/ChatSetup.tsx": "3d09c25b651cfac0ff9626606378c0678d5dd4840a25dcc3ead62ec5a2fb7d4d",
-    "friends/FriendsPage.tsx": "0d2ad961ef7dffc5c3371a5b241f2386f5cfe86b61dc354656e06540a78e6699",
+    "friends/ChatSetup.tsx": "cc46cc605ab72beb5aa474eb76898aa5a2bf23b8a0c97d9a307f615d3e7dfa8a",
+    "friends/FriendsPage.tsx": "5ba79f0954b80e4cb169a50ddd9fffc6e694c6ed5fa132abeabb9cd597e867d6",
     "friends/GroupDialogs.tsx": "0dbe1848fd81fc7c84549ee0e7f150ea9cde728e73bdc614997b86c9a0bd43de",
     "friends/InvitePicker.tsx": "c7466740933d1c871118c4470a5701bde505c67830518ef0df2870e17e640ffc",
     "friends/ReportDialog.tsx": "06eaa6d7dcc88d1aec49eb0b0c2912aa6118c8fe03c273262c0cb93d65fd03e2",
@@ -130,7 +130,7 @@
     "hooks/useSaved.ts": "5cec4fe46bb630bb85a1cadf5df1e1e163441c211ea6dd38d48a0ffa6d779aee",
     "lib/bridge.ts": "e626aed09e6a807567965c6b79ecda9cd4fe99c9532c03f721d23bec88c1415a",
     "lib/calls.ts": "8ee27cd34fcd8e9982565c23bfa28fec7645f3529c03b70066d25334d1903fd0",
-    "lib/chat.ts": "b8a9ed3043d61e5d1980ab8cd91ae83f36e2e0b0b7e5d6fd97902c584cee96ef",
+    "lib/chat.ts": "3a589e5f4a5071aaa0cabea9e6e1bb1a7849ac22578aa10266ef8a728596f8b0",
     "lib/friends.ts": "3940f9e17266a332e950a33f47d892135ca05f3a381e66656a304e8197082f02",
     "lib/sound.ts": "52f7732f05ccdbf770d1839346907fb6133c15c2f79f5c29d230e55649083fea",
     "lib/sound-recipes.ts": "adfa92079463d18fcde762f5de748c015be683dd21760fe604807e7ff0e04b5a",
@@ -159,8 +159,8 @@
     "ui/ascii/cells.ts": "2c5fb27c8d415069008424e7d73138304549ee5e8ef8d64c25ef232cd5dc7313",
     "ui/ascii/mark.ts": "04fee16f1bc5fc8e86ee416b3666e400dd3e9b769c935f57044613cfadb4fdde",
     "ui/ascii/scenes.ts": "49c123a624397157dabc6abac417eeb89b461ae35cd4a05ef3a77e2351c7ad0e",
-    "web/backend.ts": "517845cfd97bdd48e7324c38b21bc58e906a63d6c73b9020427b7e4703902247",
-    "web/engine.ts": "42f87d03cc84e3c8ccd9cf060414aacd0c15b9e0d3f780c26924c968bc660b1d",
-    "web/store.ts": "b02b3e12b0a696fe83644bed91e23d266f33c73751c3d395cd1d1c715c33694b"
+    "web/backend.ts": "343b3ca26067012b2eff2453985465a9c15f60facf9599779f106ff567ec98fa",
+    "web/engine.ts": "923d3a3ed067a5a51040f9c968bf32d3ea72832e3dea8384ed20bfcfe77666eb",
+    "web/store.ts": "2c67095612b921c4557a46385dcf059ea7cfba5c56d2b6a546bd29e9200800c7"
   }
 }

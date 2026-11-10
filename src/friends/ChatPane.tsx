@@ -422,6 +422,11 @@ export function ChatPane({
         if (m.conversationId !== conversationId) return
         setMessages((list) => list.map((x) => (x.msgId === m.msgId ? m : x)))
       }),
+      // Past messages from another of this account's devices (KB-0254).
+      on<{ conversations: string[] }>('chat-history-merged', (h) => {
+        if (!h.conversations.includes(conversationId)) return
+        void chatMessages(peer.id).then((m) => alive && setMessages(m)).catch(() => {})
+      }),
       on<{ conversationId: string; active: boolean }>('chat-typing', (t) => {
         if (t.conversationId !== conversationId) return
         setTyping(t.active)
@@ -539,7 +544,7 @@ export function ChatPane({
   const counter = limit - text.length
 
   return (
-    <section className="grid min-h-0 grid-rows-[auto_1fr_auto]">
+    <section className="grid h-full min-h-0 min-w-0 grid-rows-[auto_minmax(0,1fr)_auto] overflow-hidden">
       <header className={cn('flex items-center justify-between gap-3 border-b border-border py-3', onBack ? 'px-3' : 'px-5')}>
         <div className="flex min-w-0 items-center gap-3">
           {onBack ? (

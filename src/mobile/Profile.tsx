@@ -15,6 +15,7 @@ import { RemoteConsentCard } from '@/mobile/remote'
 import { Block, Note, Poster, Strip, TopInset } from '@/mobile/parts'
 import { Badges } from '@/mobile/badges'
 import { ScanCancelled, scanQr } from '@/mobile/scan'
+import { EmojiGlyph } from '@/rich/EmojiGlyph'
 import { RichText } from '@/rich/RichText'
 
 /** A sideways strip of game covers, the list each one is in over its corner. */
@@ -231,7 +232,7 @@ export function Profile() {
             </Caption>
             {view.status ? (
               <Note className="italic">
-                {view.statusIcon ? <span className="not-italic">{view.statusIcon} </span> : null}
+                {view.statusIcon ? <EmojiGlyph emoji={view.statusIcon} size={16} className="mr-1 align-[-3px]" /> : null}
                 <RichText text={view.status} />
               </Note>
             ) : null}

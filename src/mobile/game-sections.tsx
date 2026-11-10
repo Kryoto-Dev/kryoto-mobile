@@ -15,8 +15,8 @@ import { Attachments } from '@/mobile/attachments'
 import { StaffMentionTags, StaffTag } from '@/mobile/staff-tag'
 import { CircleCheck, CircleX, Flame, Reply } from '@/ui/pixel-icons'
 import { request } from '@/mobile/net'
-import { emojiPath, isMascotEmoji } from '@/rich/rich-catalog'
-import { useAssetBase } from '@/rich/asset-base'
+import { isEmojiName } from '@/rich/rich-catalog'
+import { EmojiGlyph } from '@/rich/EmojiGlyph'
 
 function Row({ label, children }: { label: string; children: ReactNode }) {
   return (
@@ -427,7 +427,6 @@ async function loadReactions(token: string | null, targets: string[]): Promise<R
  */
 function ReactionRow({ target, list, onChange }: { target: string; list: ReactionSummary[]; onChange: (next: ReactionSummary[]) => void }) {
   const { token, me, toast, fail } = useApp()
-  const base = useAssetBase()
   const [busy, setBusy] = useState(false)
   // Hold a chip to see who reacted with it, like the site; a hold does not also toggle it.
   const [who, setWho] = useState<string | null>(null)
@@ -469,7 +468,7 @@ function ReactionRow({ target, list, onChange }: { target: string; list: Reactio
             aria-disabled={!token || busy || undefined}
             aria-pressed={r.mine}
             aria-expanded={who === r.emoji}
-            aria-label={`:${r.emoji}: ${r.count}${r.mine ? ', yours' : ''}. Hold to see who.`}
+            aria-label={`${isEmojiName(r.emoji) ? `:${r.emoji}:` : r.emoji} ${r.count}${r.mine ? ', yours' : ''}. Hold to see who.`}
             onPointerDown={() => startHold(r.emoji)}
             onPointerUp={endHold}
             onPointerLeave={endHold}
@@ -490,15 +489,15 @@ function ReactionRow({ target, list, onChange }: { target: string; list: Reactio
             }}
             className={cn('kryo-pill inline-flex h-8 select-none items-center gap-1 border px-2 text-xs tabular-nums [-webkit-touch-callout:none]', r.mine ? 'border-primary bg-primary/15 text-foreground' : 'border-border text-muted-foreground')}
           >
-            <img src={`${base}${emojiPath(r.emoji)}`} alt="" width={22} height={22} draggable={false} className={cn('pointer-events-none size-[22px]', isMascotEmoji(r.emoji) && 'kryo-emoji-mascot')} />
+            <EmojiGlyph emoji={r.emoji} size={22} />
             {r.count}
           </button>
         ))}
-        {token ? <EmojiButton stickers={false} rank={me?.donationTier ?? null} align="left" onPick={(t) => void react(t.slice(1, -1), true)} /> : null}
+        {token ? <EmojiButton stickers={false} standard rank={me?.donationTier ?? null} align="left" onPick={(t, kind) => void react(kind === 'char' ? t : t.slice(1, -1), true)} /> : null}
       </div>
       {shown ? (
         <p role="status" className="text-[11px] leading-relaxed text-muted-foreground">
-          <img src={`${base}${emojiPath(shown.emoji)}`} alt={`:${shown.emoji}:`} width={14} height={14} className="mr-1 inline size-[14px] align-[-2px]" />
+          <EmojiGlyph emoji={shown.emoji} size={14} className="mr-1 align-[-2px]" />
           {shown.people.map((p, i) => (
             <span key={i}>
               {i > 0 ? ', ' : ''}

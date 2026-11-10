@@ -15,7 +15,7 @@ import { Attachments } from '@/mobile/attachments'
 import { StaffMentionTags, StaffTag } from '@/mobile/staff-tag'
 import { CircleCheck, CircleX, Flame, Reply } from '@/ui/pixel-icons'
 import { request } from '@/mobile/net'
-import { emojiPath } from '@/rich/rich-catalog'
+import { emojiPath, isMascotEmoji } from '@/rich/rich-catalog'
 import { useAssetBase } from '@/rich/asset-base'
 
 function Row({ label, children }: { label: string; children: ReactNode }) {
@@ -460,7 +460,7 @@ function ReactionRow({ target, list, onChange }: { target: string; list: Reactio
   }
   return (
     <div className="grid gap-1">
-      <div className="flex flex-wrap items-center gap-1" role="group" aria-label="Reactions">
+      <div className="flex flex-wrap items-center gap-2" role="group" aria-label="Reactions">
         {list.map((r) => (
           <button
             key={r.emoji}
@@ -488,9 +488,9 @@ function ReactionRow({ target, list, onChange }: { target: string; list: Reactio
               }
               if (token && !busy) void react(r.emoji, !r.mine)
             }}
-            className={cn('kryo-pill inline-flex h-7 select-none items-center gap-1 border px-1.5 text-xs tabular-nums [-webkit-touch-callout:none]', r.mine ? 'border-primary bg-primary/15 text-foreground' : 'border-border text-muted-foreground')}
+            className={cn('kryo-pill inline-flex h-8 select-none items-center gap-1 border px-2 text-xs tabular-nums [-webkit-touch-callout:none]', r.mine ? 'border-primary bg-primary/15 text-foreground' : 'border-border text-muted-foreground')}
           >
-            <img src={`${base}${emojiPath(r.emoji)}`} alt="" width={18} height={18} draggable={false} className="pointer-events-none size-[18px]" />
+            <img src={`${base}${emojiPath(r.emoji)}`} alt="" width={22} height={22} draggable={false} className={cn('pointer-events-none size-[22px]', isMascotEmoji(r.emoji) && 'kryo-emoji-mascot')} />
             {r.count}
           </button>
         ))}

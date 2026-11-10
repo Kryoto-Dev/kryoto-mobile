@@ -1,6 +1,6 @@
 {
   "source": "https://github.com/Kryoto-Dev/kryoto-desktop.git",
-  "ref": "290da78b0ef53ac7aa9b88288495b0ac82f5f83e",
+  "ref": "883498ac0dc51a8fb45f005cb24206e2270087ca",
   "worktree": [],
   "paths": [
     "env.d.ts",
@@ -63,7 +63,7 @@
     "boot/SplashScene.tsx": "69e2ef4232de7a02d9287d169386d9c7d06cd1315a9c16831efa327c63096392",
     "friends/AddFriendDialog.tsx": "09295f3b4e4df56fd869659d6a02b18de91e41bc543301d564eea7389223ce58",
     "friends/CallOverlay.tsx": "e799d082206fa4ae3d52d96bbb0d41f11b83aaf1e9bb528c94ee9fcb663380c5",
-    "friends/ChatPane.tsx": "38361100253168fdc3379dbe53fefa8e7d41379110d4407c298c873a068d6827",
+    "friends/ChatPane.tsx": "ca96dca7478a5021fc8d2682fae27c64b5da1980e5181c35a2b31e062879b3a8",
     "friends/ChatSecurity.tsx": "e87b26f064adc8a19847ff8740b717ffa01a686178ed677d38595f0521cfc609",
     "friends/ChatSettings.tsx": "32432e016116b260a5900c5b1763100765800522761b9e07930b339408b8466b",
     "friends/ChatSetup.tsx": "cc46cc605ab72beb5aa474eb76898aa5a2bf23b8a0c97d9a307f615d3e7dfa8a",
